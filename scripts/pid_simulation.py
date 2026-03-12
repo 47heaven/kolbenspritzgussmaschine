@@ -20,7 +20,7 @@ So kann die Simulation spaeter ersetzt werden:
 from dataclasses import dataclass
 from time import sleep
 
-from scripts._bootstrap import ensure_project_paths
+from _bootstrap import ensure_project_paths
 
 # Macht das lokale Paket importierbar, wenn dieses Skript direkt gestartet wird.
 ensure_project_paths()
@@ -35,14 +35,15 @@ from kolbenspritzgussmaschine.pid_control import (
 
 @dataclass(slots=True)
 class FirstOrderPlant(SensorProtocol, ActuatorProtocol):
-    """Sehr einfaches thermisches Prozessmodell fuer Tests.
+    """Einfaches thermisches Zwei-Zonen-Modell fuer Tests.
 
-    Das Modell nimmt an:
-    - die Heizung bringt Energie ein, abhaengig vom aktuellen Ausgangswert
-    - der Prozess verliert Waerme an die Umgebung
+    Das Modell bildet zwei wichtige Beobachtungen aus eurem Aufbau ab:
+    - die sensornahe Metallzone wird deutlich schneller warm als das innere Material
+    - "Sensor auf Sollwert" bedeutet nicht automatisch, dass der Kern homogen warm ist
 
-    Das ist nur eine grobe Annaeherung, reicht aber aus, um zu zeigen,
-    wie der PID-Regler ueber die Zeit reagiert.
+    Vereinfacht gibt es deshalb:
+    - ``sensor_temperature``: heiznahe Wand-/Sensorzone
+    - ``core_temperature``: traegerer Kern bzw. Materialbereich
 
     Fuer echte Hardware spaeter gilt:
     - ``read()`` wuerde eine gemessene Temperatur vom Sensor holen
@@ -51,17 +52,23 @@ class FirstOrderPlant(SensorProtocol, ActuatorProtocol):
     - ``step()`` wuerde entfallen, weil sich die reale Maschine selbst veraendert
     """
     ambient_temperature: float = 22.0
-    process_value: float = 22.0
+    sensor_temperature: float = 22.0
+    core_temperature: float = 22.0
     heater_output: float = 0.0
-    heater_gain: float = 1.4
-    cooling_gain: float = 0.02
+    heater_power_watts: float = 800.0
+    wall_heat_capacity: float = 2200.0
+    core_heat_capacity: float = 3200.0
+    wall_loss_coefficient: float = 1.8
+    core_loss_coefficient: float = 0.35
+    wall_core_coupling: float = 6.0
 
     def read(self) -> float:
         """Liefert den aktuellen simulierten Prozesswert.
 
-        Fuer den PID-Regler sieht das genauso aus wie ein echter Sensorwert.
+        Der Regler sieht hier bewusst nur die sensornahe Temperatur.
+        Der eigentliche Kern kann dabei noch deutlich kuehler sein.
         """
-        return self.process_value
+        return self.sensor_temperature
 
     def write(self, value: float) -> None:
         """Speichert den Heizbefehl des Reglers.
@@ -78,13 +85,58 @@ class FirstOrderPlant(SensorProtocol, ActuatorProtocol):
     def step(self, dt: float) -> float:
         """Fuehrt die Simulation um einen Zeitschritt weiter.
 
-        ``heat_in`` beschreibt, wie stark die Heizung den Prozess erwaermt.
-        ``cooling`` beschreibt, wie stark der Prozess Richtung Umgebungstemperatur abkuehlt.
+        Energetische Idee:
+        - die Heizleistung geht primaer in die metallnahe Zone
+        - zwischen Wand und Kern fliesst Waerme nur begrenzt
+        - beide Zonen verlieren Waerme an die Umgebung
+
+        Dadurch laesst sich das reale Problem "heisse Wand, kalter Kern"
+        wesentlich besser nachbilden als mit nur einem Temperaturwert.
         """
-        heat_in = (self.heater_output / 100.0) * self.heater_gain
-        cooling = (self.process_value - self.ambient_temperature) * self.cooling_gain
-        self.process_value += (heat_in - cooling) * dt
-        return self.process_value
+        heater_power = (self.heater_output / 100.0) * self.heater_power_watts
+        wall_to_core = (self.sensor_temperature - self.core_temperature) * self.wall_core_coupling
+        wall_loss = (self.sensor_temperature - self.ambient_temperature) * self.wall_loss_coefficient
+        core_loss = (self.core_temperature - self.ambient_temperature) * self.core_loss_coefficient
+
+        wall_net_power = heater_power - wall_to_core - wall_loss
+        core_net_power = wall_to_core - core_loss
+
+        self.sensor_temperature += (wall_net_power / self.wall_heat_capacity) * dt
+        self.core_temperature += (core_net_power / self.core_heat_capacity) * dt
+        return self.sensor_temperature
+
+    @classmethod
+    def empty_crucible(cls) -> "FirstOrderPlant":
+        """Preset fuer den leeren Metallkoerper.
+
+        Zielgroessen aus euren Angaben:
+        - grob 4 bis 8 Minuten bis etwa 200 C
+        - grob 6 bis 12 Minuten bis etwa 250 C
+        """
+        return cls(
+            wall_heat_capacity=2000.0,
+            core_heat_capacity=2600.0,
+            wall_loss_coefficient=1.6,
+            core_loss_coefficient=0.30,
+            wall_core_coupling=7.5,
+        )
+
+    @classmethod
+    def pla_shredder_charge(cls) -> "FirstOrderPlant":
+        """Preset fuer einen gefuellten Tiegel mit PLA-Schredder.
+
+        Das Material wird bewusst traeger modelliert:
+        - die Wand wird frueh warm
+        - der Kern folgt deutlich langsamer
+        - nutzbare homogenere Schmelze braucht laenger plus Soak-Zeit
+        """
+        return cls(
+            wall_heat_capacity=2400.0,
+            core_heat_capacity=9000.0,
+            wall_loss_coefficient=1.8,
+            core_loss_coefficient=0.45,
+            wall_core_coupling=2.2,
+        )
 
 
 def main() -> None:
@@ -123,7 +175,10 @@ def build_demo_controller() -> tuple[float, FirstOrderPlant, InjectionMachinePid
     Diese Funktion ist ein guter Ort, um mit PID-Parametern zu experimentieren.
     """
     sample_time = 0.2
-    plant = FirstOrderPlant()
+    # Standardmaessig simulieren wir den leeren Tiegel.
+    # Fuer traegeres Aufschmelzen von PLA kann spaeter ``pla_shredder_charge()``
+    # verwendet oder im UI ausgewaehlt werden.
+    plant = FirstOrderPlant.empty_crucible()
     controller = InjectionMachinePidController(
         sensor=plant,
         actuator=plant,

@@ -24,13 +24,13 @@ from collections import deque
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from scripts._bootstrap import ensure_project_paths
+from _bootstrap import ensure_project_paths
 
 # Fuer dieses Skript werden sowohl Projektwurzel als auch ``src`` im Importpfad benoetigt,
 # weil sowohl aus ``scripts`` als auch aus dem Paket unter ``src`` importiert wird.
 ensure_project_paths(include_project_root=True)
 
-from scripts.pid_simulation import build_demo_controller
+from pid_simulation import build_demo_controller
 
 
 def main() -> None:
