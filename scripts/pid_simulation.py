@@ -138,6 +138,24 @@ class FirstOrderPlant(SensorProtocol, ActuatorProtocol):
             wall_core_coupling=2.2,
         )
 
+    @classmethod
+    def timelapse_demo(cls) -> "FirstOrderPlant":
+        """Preset fuer eine kurze Vorfuehrung im Zeitraffer.
+
+        Dieses Preset ist bewusst unrealistisch aggressiv ausgelegt, damit die
+        sensornahe Zone bei einem 200-C-Sollwert in grob 30 Sekunden sichtbar
+        hochlaeuft. Fuer reale Aussagen ueber das thermische Verhalten darf
+        dieses Modell nicht verwendet werden.
+        """
+        return cls(
+            heater_power_watts=2400.0,
+            wall_heat_capacity=260.0,
+            core_heat_capacity=520.0,
+            wall_loss_coefficient=1.2,
+            core_loss_coefficient=0.20,
+            wall_core_coupling=12.0,
+        )
+
 
 def main() -> None:
     """Startet den simulierten Regelkreis und gibt Telemetriedaten in der Konsole aus."""
@@ -175,10 +193,10 @@ def build_demo_controller() -> tuple[float, FirstOrderPlant, InjectionMachinePid
     Diese Funktion ist ein guter Ort, um mit PID-Parametern zu experimentieren.
     """
     sample_time = 0.2
-    # Standardmaessig simulieren wir den leeren Tiegel.
-    # Fuer traegeres Aufschmelzen von PLA kann spaeter ``pla_shredder_charge()``
-    # verwendet oder im UI ausgewaehlt werden.
-    plant = FirstOrderPlant.empty_crucible()
+    # Fuer die Vorfuehrung nutzen wir bewusst ein Zeitraffer-Preset.
+    # Fuer realistischere Heizzeiten stattdessen ``empty_crucible()`` oder
+    # ``pla_shredder_charge()`` verwenden.
+    plant = FirstOrderPlant.timelapse_demo()
     controller = InjectionMachinePidController(
         sensor=plant,
         actuator=plant,
