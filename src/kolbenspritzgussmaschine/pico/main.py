@@ -18,11 +18,14 @@ def build_pico_config() -> MachineConfig:
     config.heater.pin = 2
     config.fan.pin = 3
     config.valve.pin = 4
+    config.valve.active_high = False
     config.heater.time_window_s = 2.0
     config.heater.control_period_s = 0.5
     config.control_interval_s = 0.5
     config.pid.sample_time = 0.5
+    config.safety.communication_timeout_s = 300.0
     config.safety.overtemperature_c = 250.0
+    # TODO: Restore a stricter communication timeout after valve commissioning.
     # TODO: Validate PID tuning, overtemperature threshold and fan automation threshold on the real machine.
     return config
 
