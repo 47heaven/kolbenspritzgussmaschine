@@ -25,6 +25,12 @@ except ImportError:  # pragma: no cover
     select = None
 
 
+def _safe_flush_stdout() -> None:
+    flush = getattr(sys.stdout, "flush", None)
+    if flush is not None:
+        flush()
+
+
 class PicoRuntime:
     def __init__(self, config: MachineConfig) -> None:
         self.config = config
@@ -60,6 +66,7 @@ class PicoRuntime:
         self.fan_auto_until = None
         self._last_control_at = monotonic()
         self._apply_safe_boot_state()
+        self._read_temperature()
 
     def _apply_safe_boot_state(self) -> None:
         self.heater.disable()
@@ -232,7 +239,12 @@ class PicoRuntime:
                 return self._ack()
             raise RuntimeError(f"Unknown command: {command}")
         except Exception as exc:
-            return {"type": "error", "message": str(exc), "status": self._status_payload()}
+            response = {"type": "error", "message": str(exc)}
+            try:
+                response["status"] = self._status_payload()
+            except Exception:
+                pass
+            return response
 
     def _ack(self):
         payload = self._status_payload()
@@ -273,11 +285,28 @@ def run_forever(config: MachineConfig) -> None:
         poller.register(sys.stdin, select.POLLIN)
 
     while True:
-        runtime.tick()
-        if poller is not None and poller.poll(0):
+        try:
+            runtime.tick()
+            if poller is None:
+                sleep(0.05)
+                continue
+            events = poller.poll(50)
+            if not events:
+                continue
             line = sys.stdin.readline()
-            if line:
-                response = runtime.handle_command(decode_message(line))
-                sys.stdout.write(encode_message(response).decode("utf-8"))
-                sys.stdout.flush()
-        sleep(0.05)
+            if not line:
+                continue
+            try:
+                request = decode_message(line)
+                response = runtime.handle_command(request)
+            except Exception as exc:
+                response = {"type": "error", "message": str(exc)}
+            sys.stdout.write(encode_message(response).decode("utf-8"))
+            _safe_flush_stdout()
+        except Exception as exc:
+            try:
+                sys.stdout.write(encode_message({"type": "error", "message": str(exc)}).decode("utf-8"))
+                _safe_flush_stdout()
+            except Exception:
+                pass
+            sleep(0.1)

@@ -16,12 +16,17 @@
 ## Dateien auf den Pico kopieren
 
 Empfohlen ist `mpremote`.
+Unter Windows ggf. als `python -m mpremote ...` aufrufen, wenn `mpremote` nicht im `PATH` liegt.
 
 Minimal benoetigte Dateien:
 
+- `src/kolbenspritzgussmaschine/__init__.py`
 - `src/kolbenspritzgussmaschine/config.py`
 - `src/kolbenspritzgussmaschine/models.py`
+- `src/kolbenspritzgussmaschine/safety_manager.py`
+- `src/kolbenspritzgussmaschine/communication/__init__.py`
 - `src/kolbenspritzgussmaschine/communication/protocol.py`
+- `src/kolbenspritzgussmaschine/pico/__init__.py`
 - `src/kolbenspritzgussmaschine/pico/max31865_sensor.py`
 - `src/kolbenspritzgussmaschine/pico/heater_output.py`
 - `src/kolbenspritzgussmaschine/pico/fan_output.py`

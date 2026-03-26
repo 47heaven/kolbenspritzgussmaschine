@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Callable, Protocol
 
 from ..config import OperatingMode
@@ -46,9 +48,13 @@ class SerialLineTransport:
         if serial is None:
             raise RuntimeError("pyserial is required for SerialLineTransport but is not installed.")
         self._serial = serial.Serial(port=port, baudrate=baudrate, timeout=timeout_s)
+        self._serial.reset_input_buffer()
+        self._serial.reset_output_buffer()
 
     def write(self, data: bytes) -> int:
-        return int(self._serial.write(data))
+        written = int(self._serial.write(data))
+        self._serial.flush()
+        return written
 
     def readline(self) -> bytes:
         return bytes(self._serial.readline())
@@ -86,10 +92,34 @@ class PicoControllerClient:
 
     def _roundtrip(self, message: dict[str, Any]) -> dict[str, Any]:
         self.transport.write(encode_message(message))
-        response = decode_message(self.transport.readline())
+        response = self._read_response()
+        if response == message or response.get("type") == message.get("type"):
+            raise RuntimeError(
+                "Serial port echoed the request. The Pico is likely in the MicroPython REPL, "
+                "and the JSON controller runtime is not running."
+            )
         if response.get("type") == "error":
             raise RuntimeError(response.get("message", "Unknown Pico error"))
         return response
+
+    def _read_response(self) -> dict[str, Any]:
+        deadline = monotonic() + 2.0
+        last_error = None
+        while monotonic() < deadline:
+            raw = self.transport.readline()
+            if not raw:
+                continue
+            text = raw.decode("utf-8", errors="ignore").strip()
+            if not text:
+                continue
+            try:
+                return decode_message(text)
+            except json.JSONDecodeError as exc:
+                last_error = exc
+                continue
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No JSON response received from Pico controller.")
 
     def ping(self) -> dict[str, Any]:
         return self._roundtrip(ping_command())

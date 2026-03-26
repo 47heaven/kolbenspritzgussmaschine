@@ -1,1 +1,1 @@
-﻿"""MicroPython-facing hardware modules for the Raspberry Pi Pico."""
+# Pico-specific hardware modules.

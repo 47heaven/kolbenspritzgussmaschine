@@ -8,6 +8,14 @@ except ImportError:  # pragma: no cover
     Pin = None
     SPI = None
 
+try:
+    from time import sleep_ms
+except ImportError:  # pragma: no cover
+    from time import sleep
+
+    def sleep_ms(duration_ms: int) -> None:
+        sleep(duration_ms / 1000.0)
+
 
 class Max31865Sensor:
     """Minimal MAX31865 reader for PT100/PT1000 on the Pico.
@@ -54,6 +62,7 @@ class Max31865Sensor:
         self.cs = Pin(cs_pin, Pin.OUT, value=1)
         self.last_fault = 0
         self._configure()
+        sleep_ms(65)
 
     def _configure(self) -> None:
         config = self.CONFIG_BIAS | self.CONFIG_AUTO | self.CONFIG_CLEAR_FAULT
@@ -77,17 +86,33 @@ class Max31865Sensor:
         return bytes(read_buffer)
 
     def read_temperature(self) -> float:
+        combined = self._read_rtd_register_once()
+        if combined is None:
+            sleep_ms(65)
+            self._clear_fault()
+            sleep_ms(10)
+            combined = self._read_rtd_register_once()
+        if combined is None:
+            fault = self.last_fault
+            if fault:
+                raise RuntimeError(f"MAX31865 fault 0x{fault:02X}")
+            raise RuntimeError("MAX31865 returned zero RTD value.")
+        rtd = combined >> 1
+        resistance = (rtd / 32768.0) * self.sensor_config.reference_resistor_ohms
+        return self._resistance_to_temperature(resistance)
+
+    def _read_rtd_register_once(self):
         raw = self._read_registers(self.RTD_MSB_REGISTER, 2)
         combined = (raw[0] << 8) | raw[1]
         if combined & 0x01:
             self.last_fault = self._read_registers(self.FAULT_STATUS_REGISTER, 1)[0]
-            self._clear_fault()
-            raise RuntimeError(f"MAX31865 fault 0x{self.last_fault:02X}")
+            return None
         rtd = combined >> 1
         if rtd == 0:
-            raise RuntimeError("MAX31865 returned zero RTD value.")
-        resistance = (rtd / 32768.0) * self.sensor_config.reference_resistor_ohms
-        return self._resistance_to_temperature(resistance)
+            self.last_fault = 0
+            return None
+        self.last_fault = 0
+        return combined
 
     def _clear_fault(self) -> None:
         config = self.CONFIG_BIAS | self.CONFIG_AUTO | self.CONFIG_CLEAR_FAULT
