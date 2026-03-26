@@ -1,10 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic, sleep
 from typing import Protocol
 
 from simple_pid import PID
+
+from .config import PidConfig
 
 
 class SensorProtocol(Protocol):
@@ -18,19 +20,6 @@ class ActuatorProtocol(Protocol):
 
     def stop(self) -> None:
         """Drive the actuator into a defined safe state."""
-
-
-@dataclass(slots=True)
-class PidConfig:
-    kp: float
-    ki: float
-    kd: float
-    setpoint: float
-    sample_time: float = 0.1
-    output_limits: tuple[float | None, float | None] = (0.0, 100.0)
-    starting_output: float = 0.0
-    proportional_on_measurement: bool = False
-    differential_on_measurement: bool = True
 
 
 @dataclass(slots=True)
@@ -87,8 +76,7 @@ class InjectionMachinePidController:
         self._pid.auto_mode = False
         self.actuator.stop()
 
-    def update_once(self) -> PidTelemetry:
-        process_value = self.sensor.read()
+    def update_from_measurement(self, process_value: float) -> PidTelemetry:
         output = float(self._pid(process_value))
         self.actuator.write(output)
 
@@ -106,6 +94,10 @@ class InjectionMachinePidController:
             derivative=float(derivative),
         )
 
+    def update_once(self) -> PidTelemetry:
+        process_value = self.sensor.read()
+        return self.update_from_measurement(process_value)
+
     def assert_fresh(self) -> None:
         if monotonic() - self._last_update > self.max_stale_seconds:
             self.disable()
@@ -115,4 +107,3 @@ class InjectionMachinePidController:
         while True:
             self.update_once()
             sleep(self.config.sample_time)
-

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
@@ -18,7 +18,7 @@ from scripts.pid_simulation import build_demo_controller
 
 
 def main() -> None:
-    sample_time, plant, controller = build_demo_controller()
+    sample_time, gateway = build_demo_controller()
     history_seconds = 60.0
     history_length = max(50, int(history_seconds / sample_time))
 
@@ -48,14 +48,13 @@ def main() -> None:
     def update(_frame: int):
         nonlocal elapsed_time
 
-        telemetry = controller.update_once()
-        plant.step(sample_time)
+        status = gateway.poll_status()
         elapsed_time += sample_time
 
         times.append(elapsed_time)
-        process_values.append(telemetry.process_value)
-        setpoints.append(telemetry.setpoint)
-        outputs.append(telemetry.control_output)
+        process_values.append(status.temperature_c if status.temperature_c is not None else 0.0)
+        setpoints.append(status.setpoint_c)
+        outputs.append(status.heater_output_percent)
 
         x_values = list(times)
         process_line.set_data(x_values, list(process_values))
@@ -70,9 +69,10 @@ def main() -> None:
             ax_process.set_ylim(process_min - margin, process_max + margin)
 
         ax_process.set_title(
-            f"Ist={telemetry.process_value:.2f} C | "
-            f"Soll={telemetry.setpoint:.2f} C | "
-            f"Stellwert={telemetry.control_output:.1f} %"
+            f"Ist={status.temperature_c or 0.0:.2f} C | "
+            f"Soll={status.setpoint_c:.2f} C | "
+            f"Stellwert={status.heater_output_percent:.1f} % | "
+            f"Fault={status.fault_code.value}"
         )
         return process_line, setpoint_line, output_line
 
