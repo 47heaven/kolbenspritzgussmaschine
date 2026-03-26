@@ -1,22 +1,5 @@
 ﻿from __future__ import annotations
 
-"""Zentrale PID-Bausteine fuer das Projekt der Kolbenspritzgussmaschine.
-
-Dieses Modul enthaelt die wiederverwendbare Reglerlogik.
-Die Dateien in ``scripts/`` zeigen nur, wie man diese Logik benutzt.
-
-Grundidee:
-- ``SensorProtocol`` legt fest, wie Temperaturdaten gelesen werden
-- ``ActuatorProtocol`` legt fest, wie der Heizausgang beschrieben wird
-- ``InjectionMachinePidController`` verbindet beides ueber einen PID-Regler
-
-So wird das Modul spaeter auf echte Hardware angepasst:
-- Eine konkrete Sensorklasse mit ``read()`` implementieren
-- Eine konkrete Aktorklasse mit ``write()`` und ``stop()`` implementieren
-- Diese Objekte an ``InjectionMachinePidController`` uebergeben
-- Die restliche Reglerlogik kann unveraendert bleiben
-"""
-
 from dataclasses import dataclass
 from time import monotonic, sleep
 from typing import Protocol
@@ -25,11 +8,7 @@ try:
     from simple_pid import PID
 except ModuleNotFoundError:
     class PID:
-        """Einfache Ersatzimplementierung, falls ``simple-pid`` nicht installiert ist.
-
-        Dadurch bleibt das Beispielprojekt fuer Lernzwecke lauffaehig.
-        Fuer den produktiven Einsatz ist das externe, getestete Paket vorzuziehen.
-        """
+        """Minimal fallback implementation when ``simple_pid`` is unavailable."""
 
         def __init__(
             self,
@@ -128,55 +107,20 @@ from .config import PidConfig
 
 
 class SensorProtocol(Protocol):
-    """Minimale Schnittstelle fuer alles, was einen Prozesswert liefern kann."""
-
     def read(self) -> float:
-        """Liefert den aktuellen Prozesswert."""
+        """Return the current process value."""
 
 
 class ActuatorProtocol(Protocol):
-    """Minimale Schnittstelle fuer alles, was einen Reglerausgang empfangen kann."""
-
     def write(self, value: float) -> None:
-        """Uebergibt einen neuen Stellwert an den Aktor."""
+        """Apply a new actuator output."""
 
     def stop(self) -> None:
-        """Versetzt den Aktor in einen definierten sicheren Zustand."""
+        """Drive the actuator into a defined safe state."""
 
 
 @dataclass(slots=True)
-<<<<<<< HEAD
-=======
-class PidConfig:
-    """Konfigurationswerte fuer den PID-Regler.
-
-    Wichtige Tuning-Felder:
-    - ``kp``: staerkere unmittelbare Reaktion auf den aktuellen Fehler
-    - ``ki``: gleicht langfristige Abweichungen aus
-    - ``kd``: reagiert auf Aenderungsgeschwindigkeit und kann Ueberschwingen reduzieren
-    """
-    kp: float
-    ki: float
-    kd: float
-    setpoint: float
-    sample_time: float = 0.1
-    output_limits: tuple[float | None, float | None] = (0.0, 100.0)
-    starting_output: float = 0.0
-    proportional_on_measurement: bool = False
-    differential_on_measurement: bool = True
-
-
-@dataclass(slots=True)
->>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 class PidTelemetry:
-    """Momentaufnahme eines einzelnen Reglerzyklus.
-
-    Das ist nuetzlich fuer:
-    - Logging
-    - Plotten
-    - Debugging
-    - spaeteres Weitergeben an eine GUI
-    """
     timestamp: float
     process_value: float
     setpoint: float
@@ -188,15 +132,7 @@ class PidTelemetry:
 
 
 class InjectionMachinePidController:
-    """Erweitert die PID-Bibliothek um maschinenorientiertes Verhalten.
-
-    Aufgaben dieser Klasse:
-    - aktuellen Prozesswert vom Sensor lesen
-    - neuen Stellwert berechnen
-    - Stellwert an den Aktor senden
-    - Telemetrie fuer Logs, Plots oder GUIs bereitstellen
-    - den Aktor stoppen, wenn Daten zu alt werden
-    """
+    """Wrap simple-pid with machine-oriented safety and telemetry hooks."""
 
     def __init__(
         self,
@@ -206,14 +142,11 @@ class InjectionMachinePidController:
         *,
         max_stale_seconds: float = 1.0,
     ) -> None:
-        # ``sensor`` und ``actuator`` koennen heute Simulationen und spaeter reale Hardware sein.
         self.sensor = sensor
         self.actuator = actuator
         self.config = config
         self.max_stale_seconds = max_stale_seconds
         self._last_update = 0.0
-
-        # Erzeugt das eigentliche PID-Objekt mit den gewaehlten Reglerparametern.
         self._pid = PID(
             config.kp,
             config.ki,
@@ -228,39 +161,19 @@ class InjectionMachinePidController:
 
     @property
     def pid(self) -> PID:
-        """Gibt das rohe PID-Objekt frei, falls spaeter feiner getunt werden soll."""
         return self._pid
 
     def set_setpoint(self, value: float) -> None:
-        """Aendert den Sollwert waehrend der Regler laeuft."""
         self._pid.setpoint = value
 
     def enable(self, last_output: float | None = None) -> None:
-        """Aktiviert den automatischen PID-Betrieb.
-
-        ``last_output`` kann beim Wiedereinschalten uebergeben werden, um einen harten Sprung zu vermeiden.
-        """
         self._pid.set_auto_mode(True, last_output=last_output)
 
     def disable(self) -> None:
-        """Deaktiviert die automatische Regelung und setzt den Aktor in einen sicheren Zustand."""
         self._pid.auto_mode = False
         self.actuator.stop()
 
-<<<<<<< HEAD
     def update_from_measurement(self, process_value: float) -> PidTelemetry:
-=======
-    def update_once(self) -> PidTelemetry:
-        """Fuehrt genau einen Reglerzyklus aus.
-
-        Reihenfolge:
-        1. Sensorwert lesen
-        2. PID-Ausgang berechnen
-        3. Ausgang an den Aktor schreiben
-        4. Telemetriedaten fuer Anzeige oder Auswertung zurueckgeben
-        """
-        process_value = self.sensor.read()
->>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         output = float(self._pid(process_value))
         self.actuator.write(output)
 
@@ -283,22 +196,11 @@ class InjectionMachinePidController:
         return self.update_from_measurement(process_value)
 
     def assert_fresh(self) -> None:
-        """Loest einen Sicherheitsfehler aus, wenn der Regelkreis zu lange nicht aktualisiert wurde.
-
-        In einer realen Maschine schuetzt das vor Situationen, in denen das Programm haengt,
-        die Heizung aber sonst auf dem letzten Ausgangswert stehen bleiben wuerde.
-        """
         if monotonic() - self._last_update > self.max_stale_seconds:
             self.disable()
             raise TimeoutError("PID loop data is stale; actuator was stopped.")
 
     def run_forever(self) -> None:
-        """Fuehrt den Regelkreis dauerhaft mit der konfigurierten Zykluszeit aus.
-
-        Das ist die einfachste Form einer spaeteren Produktionsschleife.
-        In einer groesseren Anwendung koennte stattdessen ``update_once()`` aus
-        einem eigenen Thread, Prozess oder Async-Task heraus aufgerufen werden.
-        """
         while True:
             self.update_once()
             sleep(self.config.sample_time)

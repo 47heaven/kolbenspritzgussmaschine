@@ -126,16 +126,22 @@ class PicoControllerClient:
 
     def fetch_status(self) -> MachineStatus:
         response = self._roundtrip(status_command())
+        timestamp = float(response.get("timestamp", response.get("time", 0.0)))
+        temperature_c = response.get("temperature_c", response.get("temp"))
+        setpoint_c = float(response.get("setpoint_c", response.get("setpoint", 0.0)))
+        heater_output_percent = float(response.get("heater_output_percent", response.get("heater_percent", 0.0)))
+        fault_code = response.get("fault_code", response.get("fault", ErrorCode.NONE.value))
+        fault_message = str(response.get("fault_message", response.get("message", "")))
         return MachineStatus(
-            timestamp=float(response["timestamp"]),
-            temperature_c=response.get("temperature_c"),
-            setpoint_c=float(response["setpoint_c"]),
-            heater_output_percent=float(response["heater_output_percent"]),
-            heating_enabled=bool(response["heating_enabled"]),
-            fan_enabled=bool(response["fan_enabled"]),
-            valve_enabled=bool(response["valve_enabled"]),
-            fault_code=ErrorCode(str(response.get("fault_code", ErrorCode.NONE.value))),
-            fault_message=str(response.get("fault_message", "")),
+            timestamp=timestamp,
+            temperature_c=temperature_c,
+            setpoint_c=setpoint_c,
+            heater_output_percent=heater_output_percent,
+            heating_enabled=bool(response.get("heating_enabled", heater_output_percent > 0.0)),
+            fan_enabled=bool(response.get("fan_enabled", False)),
+            valve_enabled=bool(response.get("valve_enabled", False)),
+            fault_code=ErrorCode(str(fault_code)),
+            fault_message=fault_message,
             mode=OperatingMode(str(response.get("mode", OperatingMode.OFF.value))),
             sensor_ok=bool(response.get("sensor_ok", False)),
             communication_ok=bool(response.get("communication_ok", True)),

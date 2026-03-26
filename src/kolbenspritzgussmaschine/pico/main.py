@@ -1,7 +1,9 @@
-from __future__ import annotations
-
-from ..config import MachineConfig, SensorElement, TemperatureSensorConfig
-from .runtime import run_forever
+try:
+    from ..config import MachineConfig, SensorElement, TemperatureSensorConfig
+    from .runtime import run_forever
+except ImportError:
+    from kolbenspritzgussmaschine.config import MachineConfig, SensorElement, TemperatureSensorConfig
+    from kolbenspritzgussmaschine.pico.runtime import run_forever
 
 
 def build_pico_config() -> MachineConfig:

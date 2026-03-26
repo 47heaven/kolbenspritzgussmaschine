@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 import sys
-from time import monotonic, sleep
+from time import sleep
 
 from ..communication.protocol import decode_message, encode_message
 from ..config import MachineConfig, OperatingMode
@@ -12,6 +10,14 @@ from .max31865_sensor import Max31865Sensor
 from .pid_loop import SimplePidLoop
 from .safety_manager import PicoSafetyManager
 from .valve_output import ActiveHighValveOutput
+
+try:
+    from time import monotonic
+except ImportError:
+    from time import ticks_ms
+
+    def monotonic():
+        return ticks_ms() / 1000.0
 
 try:  # pragma: no cover - MicroPython only
     import uselect as select
@@ -47,11 +53,11 @@ class PicoRuntime:
         self.valve_enabled = False
         self.fan_auto_active = False
         self.fault = FaultState(ErrorCode.NONE, "")
-        self.temperature_c: float | None = None
+        self.temperature_c = None
         self.sensor_ok = False
         self.heater_output_percent = 0.0
-        self.heater_test_until: float | None = None
-        self.fan_auto_until: float | None = None
+        self.heater_test_until = None
+        self.fan_auto_until = None
         self._last_control_at = monotonic()
         self._apply_safe_boot_state()
 
@@ -121,7 +127,7 @@ class PicoRuntime:
         self.valve.set_enabled(self.valve_enabled if self.mode != OperatingMode.FAULT else False)
         self._apply_fan_logic(now)
 
-    def tick(self) -> MachineStatus:
+    def tick(self):
         now = monotonic()
         watchdog_fault = self.safety.evaluate_watchdog()
         if watchdog_fault is not None and self.mode != OperatingMode.FAULT:
@@ -134,7 +140,7 @@ class PicoRuntime:
             self.heater.update()
         return self.build_status(now)
 
-    def build_status(self, now: float | None = None) -> MachineStatus:
+    def build_status(self, now=None):
         now = monotonic() if now is None else now
         remaining = 0.0
         if self.heater_test_until is not None:
@@ -158,7 +164,7 @@ class PicoRuntime:
             test_seconds_remaining=remaining,
         )
 
-    def handle_command(self, request: dict[str, object]) -> dict[str, object]:
+    def handle_command(self, request):
         self.safety.note_command_received()
         command = str(request.get("type", ""))
         try:
@@ -228,17 +234,17 @@ class PicoRuntime:
         except Exception as exc:
             return {"type": "error", "message": str(exc), "status": self._status_payload()}
 
-    def _ack(self) -> dict[str, object]:
+    def _ack(self):
         payload = self._status_payload()
         payload["type"] = "ack"
         return payload
 
-    def _status_response(self) -> dict[str, object]:
+    def _status_response(self):
         payload = self._status_payload()
         payload["type"] = "status"
         return payload
 
-    def _status_payload(self) -> dict[str, object]:
+    def _status_payload(self):
         status = self.build_status()
         return {
             "timestamp": status.timestamp,

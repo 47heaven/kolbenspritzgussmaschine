@@ -1,6 +1,13 @@
-from __future__ import annotations
+try:
+    from time import ticks_diff, ticks_ms
+except ImportError:
+    from time import monotonic
 
-from time import ticks_diff, ticks_ms
+    def ticks_ms():
+        return int(monotonic() * 1000)
+
+    def ticks_diff(current, previous):
+        return current - previous
 
 from ..config import HeaterOutputConfig
 
@@ -39,7 +46,7 @@ class TimeProportionalHeaterOutput:
         self._power_percent = 0.0
         self._write(False)
 
-    def update(self, now_ms: int | None = None) -> None:
+    def update(self, now_ms=None) -> None:
         now_ms = ticks_ms() if now_ms is None else now_ms
         elapsed_ms = ticks_diff(now_ms, self._window_started_ms)
         if elapsed_ms >= self._window_ms:

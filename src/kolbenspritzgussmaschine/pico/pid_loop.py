@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 class SimplePidLoop:
     """Tiny PID implementation suitable for MicroPython.
 
@@ -16,7 +13,7 @@ class SimplePidLoop:
         self.output_max = output_max
         self.setpoint = 0.0
         self._integral = 0.0
-        self._last_measurement: float | None = None
+        self._last_measurement = None
 
     def reset(self) -> None:
         self._integral = 0.0

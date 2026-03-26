@@ -1,16 +1,12 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-
 from .config import SafetyConfig
 from .models import ErrorCode, FaultState
 
 
-@dataclass(slots=True)
 class SafeOutputs:
-    heater_percent: float = 0.0
-    fan_enabled: bool = True
-    valve_enabled: bool = False
+    def __init__(self, heater_percent=0.0, fan_enabled=True, valve_enabled=False):
+        self.heater_percent = heater_percent
+        self.fan_enabled = fan_enabled
+        self.valve_enabled = valve_enabled
 
 
 class SafetyManager:
@@ -19,7 +15,7 @@ class SafetyManager:
     def __init__(self, config: SafetyConfig) -> None:
         self.config = config
 
-    def evaluate_temperature(self, temperature_c: float) -> FaultState | None:
+    def evaluate_temperature(self, temperature_c):
         if temperature_c < self.config.min_plausible_temp_c:
             return FaultState(
                 ErrorCode.TEMPERATURE_OUT_OF_RANGE,
@@ -37,7 +33,7 @@ class SafetyManager:
             )
         return None
 
-    def evaluate_communication(self, last_seen_at: float | None, now: float) -> FaultState | None:
+    def evaluate_communication(self, last_seen_at, now):
         if last_seen_at is None:
             return None
         if now - last_seen_at > self.config.communication_timeout_s:

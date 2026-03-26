@@ -49,13 +49,29 @@ def print_help() -> None:
     print('  quit')
 
 
-def format_status(response: dict) -> str:
+def format_status(response: object) -> str:
+    if hasattr(response, "mode"):
+        return (
+            f"t={getattr(response, 'timestamp', 0.0):.3f} "
+            f"mode={getattr(response, 'mode', None)} "
+            f"temp={getattr(response, 'temperature_c', None)}C "
+            f"sp={getattr(response, 'setpoint_c', None)}C "
+            f"heater={getattr(response, 'heater_output_percent', None)}% "
+            f"heater_on={getattr(response, 'heater_on', None)} "
+            f"fan={getattr(response, 'fan_enabled', None)} "
+            f"valve={getattr(response, 'valve_enabled', None)} "
+            f"sensor_ok={getattr(response, 'sensor_ok', None)} "
+            f"fault={getattr(getattr(response, 'fault_code', None), 'value', getattr(response, 'fault_code', None))} "
+            f"msg={getattr(response, 'fault_message', '')}"
+        )
     return (
-        f"mode={response.get('mode')} temp={response.get('temperature_c')}C "
-        f"sp={response.get('setpoint_c')}C heater={response.get('heater_output_percent')}% "
+        f"t={response.get('timestamp', response.get('time', 0.0))} "
+        f"mode={response.get('mode')} temp={response.get('temperature_c', response.get('temp'))}C "
+        f"sp={response.get('setpoint_c', response.get('setpoint'))}C "
+        f"heater={response.get('heater_output_percent', response.get('heater_percent'))}% "
         f"heater_on={response.get('heater_on')} fan={response.get('fan_enabled')} "
         f"valve={response.get('valve_enabled')} sensor_ok={response.get('sensor_ok')} "
-        f"fault={response.get('fault_code')} msg={response.get('fault_message')}"
+        f"fault={response.get('fault_code', response.get('fault'))} msg={response.get('fault_message', response.get('message'))}"
     )
 
 
@@ -127,7 +143,7 @@ def main() -> None:
                 response = client.ping()
             elif line == 'status':
                 status = client.fetch_status()
-                print(status)
+                print(format_status(status))
                 continue
             elif line.startswith('mode '):
                 mode = line.split()[1].lower()
