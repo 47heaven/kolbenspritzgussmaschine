@@ -1,9 +1,13 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+<<<<<<< HEAD
 from pathlib import Path
 import os
 import sys
@@ -19,6 +23,17 @@ from kolbenspritzgussmaschine.config import MachineConfig, OperatingMode, Runtim
 from kolbenspritzgussmaschine.models import MachineStatus
 from kolbenspritzgussmaschine.services.controller_service import ControllerService, PicoGateway, SimulationGateway
 from kolbenspritzgussmaschine.communication.client import PicoControllerClient, SerialLineTransport
+=======
+import tkinter as tk
+from tkinter import messagebox
+
+from _bootstrap import ensure_project_paths
+
+ensure_project_paths(include_project_root=True)
+
+from pid_simulation import FirstOrderPlant, build_demo_controller
+from kolbenspritzgussmaschine.pid_control import InjectionMachinePidController, PidConfig, PidTelemetry
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
 
 @dataclass(slots=True)
@@ -56,6 +71,7 @@ class ChartState:
 
 
 class TouchToggle(tk.Frame):
+<<<<<<< HEAD
     def __init__(
         self,
         master: tk.Misc,
@@ -71,6 +87,12 @@ class TouchToggle(tk.Frame):
         self.value = tk.IntVar(value=initial_percent)
         self._command = command
         self._theme = theme
+=======
+    def __init__(self, master: tk.Misc, theme: UiTheme, title: str, subtitle: str, initial_percent: int) -> None:
+        super().__init__(master, bg=theme.panel_alt, highlightthickness=1, highlightbackground=theme.border)
+        self.enabled = tk.BooleanVar(value=True)
+        self.value = tk.IntVar(value=initial_percent)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
         tk.Label(self, text=title, bg=theme.panel_alt, fg=theme.muted, font=("Consolas", 11)).pack(anchor="w", padx=14, pady=(12, 10))
 
@@ -80,7 +102,10 @@ class TouchToggle(tk.Frame):
         tk.Checkbutton(
             row,
             variable=self.enabled,
+<<<<<<< HEAD
             command=self._emit,
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
             bg=theme.panel_alt,
             activebackground=theme.panel_alt,
             selectcolor=theme.panel_alt,
@@ -105,7 +130,10 @@ class TouchToggle(tk.Frame):
             orient="horizontal",
             variable=self.value,
             showvalue=False,
+<<<<<<< HEAD
             state="disabled",
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
             bg=theme.panel_alt,
             fg=theme.text,
             troughcolor=theme.bg,
@@ -115,6 +143,7 @@ class TouchToggle(tk.Frame):
             bd=0,
         ).pack(fill="x", padx=10, pady=(0, 10))
 
+<<<<<<< HEAD
     def set_state(self, enabled: bool, value: int) -> None:
         self.enabled.set(enabled)
         self.value.set(value)
@@ -123,6 +152,8 @@ class TouchToggle(tk.Frame):
         if self._command is not None:
             self._command(self.enabled.get())
 
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
 class StatusIndicator(tk.Frame):
     def __init__(self, master: tk.Misc, theme: UiTheme, label: str) -> None:
@@ -141,6 +172,7 @@ class StatusIndicator(tk.Frame):
         self.dot.itemconfig(self.dot_id, fill=color)
 
 
+<<<<<<< HEAD
 class ServiceWindow:
     def __init__(self, root: tk.Tk, theme: UiTheme, service: ControllerService) -> None:
         self.root = root
@@ -244,6 +276,8 @@ def build_service() -> ControllerService:
     return ControllerService(gateway, poll_interval_s=config.status_interval_s)
 
 
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 class App:
     WINDOW_SIZE = "1360x820"
     DISPLAY_MAX_POWER_WATTS = 800.0
@@ -255,6 +289,7 @@ class App:
     def __init__(self) -> None:
         self.theme = UiTheme()
         self.root = self._build_root()
+<<<<<<< HEAD
         self.service = build_service()
         self.service_window = ServiceWindow(self.root, self.theme, self.service)
 
@@ -265,6 +300,18 @@ class App:
         self.preview_elapsed = 0.0
         self._last_status_timestamp = -1.0
         self.preview_gateway: SimulationGateway | None = None
+=======
+
+        self.sample_time, self.plant, self.controller = build_demo_controller()
+        self.preview_plant: FirstOrderPlant | None = None
+        self.preview_controller: InjectionMachinePidController | None = None
+        self.preview_sample_time = 0.2
+
+        self.running = True
+        self.heating_enabled = True
+        self.elapsed = 0.0
+        self.preview_elapsed = 0.0
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
         self.live_chart = self._create_chart_state(self.sample_time, self.LIVE_HISTORY_POINTS)
         self.preview_chart = self._create_chart_state(self.preview_sample_time, self.PREVIEW_HISTORY_POINTS)
@@ -277,12 +324,17 @@ class App:
         self._init_widget_refs()
         self._build_ui()
         self._rebuild_profile_buttons()
+<<<<<<< HEAD
         self._rebuild_profile_list()
         self._apply_profile(self.profiles[0], update_form=True, push_live=False)
         self._reset_preview()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.service.start()
+=======
+        self._apply_profile(self.profiles[0], update_form=True)
+        self._reset_preview()
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self._tick_clock()
         self._schedule()
 
@@ -312,7 +364,11 @@ class App:
 
     def _init_variables(self) -> None:
         self.clock = tk.StringVar(value="--:--:--")
+<<<<<<< HEAD
         self.status = tk.StringVar(value="Heizbetrieb aktiv (Service-Architektur)")
+=======
+        self.status = tk.StringVar(value="Heizbetrieb aktiv (Zeitraffer-Demo)")
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.actual = tk.StringVar(value="22")
         self.setpoint = tk.StringVar(value="200")
         self.output = tk.StringVar(value="0 %")
@@ -320,10 +376,17 @@ class App:
         self.avg_power = tk.StringVar(value="0 W")
         self.profile_label = tk.StringVar(value=self.active_profile)
 
+<<<<<<< HEAD
         self.pid_kp = tk.DoubleVar(value=self.profiles[0].kp)
         self.pid_ki = tk.DoubleVar(value=self.profiles[0].ki)
         self.pid_kd = tk.DoubleVar(value=self.profiles[0].kd)
         self.pid_sp = tk.DoubleVar(value=self.profiles[0].setpoint)
+=======
+        self.pid_kp = tk.DoubleVar(value=self.controller.config.kp)
+        self.pid_ki = tk.DoubleVar(value=self.controller.config.ki)
+        self.pid_kd = tk.DoubleVar(value=self.controller.config.kd)
+        self.pid_sp = tk.DoubleVar(value=200.0)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
         self.form_name = tk.StringVar(value="NEUES MATERIAL")
         self.form_sp = tk.DoubleVar(value=210.0)
@@ -334,6 +397,10 @@ class App:
     def _init_widget_refs(self) -> None:
         self.nav_buttons: dict[str, tk.Button] = {}
         self.profile_buttons: dict[str, tk.Button] = {}
+<<<<<<< HEAD
+=======
+
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.output_bar: tk.Frame
         self.progress_bar: tk.Frame
         self.avg_power_bar: tk.Frame
@@ -344,12 +411,19 @@ class App:
         self.sensor_status: StatusIndicator
         self.pid_status: StatusIndicator
         self.heat_status: StatusIndicator
+<<<<<<< HEAD
         self.fan_toggle: TouchToggle
         self.valve_toggle: TouchToggle
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _build_ui(self) -> None:
         outer = tk.Frame(self.root, bg=self.theme.bg)
         outer.pack(fill="both", expand=True, padx=16, pady=16)
+<<<<<<< HEAD
+=======
+
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self._build_header(outer)
         self._build_navigation(outer)
         self._build_pages(outer)
@@ -361,7 +435,10 @@ class App:
         tk.Label(header, textvariable=self.status, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 11)).pack(side="left", padx=12)
         self.btn(header, "HEIZEN START", self.start_heating, self.theme.green).pack(side="left", padx=(20, 8))
         self.btn(header, "HEIZEN STOPP", self.stop_heating, self.theme.amber).pack(side="left")
+<<<<<<< HEAD
         self.btn(header, "SERVICE", self.service_window.open, self.theme.orange, 10).pack(side="right", padx=(0, 16))
+=======
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         tk.Label(header, textvariable=self.clock, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 16)).pack(side="right", padx=16)
 
     def _build_navigation(self, master: tk.Misc) -> None:
@@ -369,7 +446,24 @@ class App:
         nav.pack(fill="x", pady=(12, 0))
         entries = [("dashboard", "DASHBOARD"), ("pid", "PID-LABOR"), ("profiles", "MATERIALPROFILE")]
         for key, label in entries:
+<<<<<<< HEAD
             button = tk.Button(master=nav, text=label, command=lambda current=key: self.show_page(current), bg=self.theme.panel_alt, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", 13, "bold"), padx=18, pady=12)
+=======
+            button = tk.Button(
+                nav,
+                text=label,
+                command=lambda current=key: self.show_page(current),
+                bg=self.theme.panel_alt,
+                fg=self.theme.text,
+                activebackground=self.theme.orange,
+                activeforeground=self.theme.bg,
+                relief="flat",
+                bd=0,
+                font=("Consolas", 13, "bold"),
+                padx=18,
+                pady=12,
+            )
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
             button.pack(side="left", padx=(0, 10))
             self.nav_buttons[key] = button
 
@@ -378,6 +472,10 @@ class App:
         pages.pack(fill="both", expand=True, pady=(12, 0))
         pages.grid_rowconfigure(0, weight=1)
         pages.grid_columnconfigure(0, weight=1)
+<<<<<<< HEAD
+=======
+
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.page_frames = {
             "dashboard": self._build_dashboard(pages),
             "pid": self._build_pid_page(pages),
@@ -456,10 +554,15 @@ class App:
 
     def _build_dashboard_right(self, master: tk.Misc) -> None:
         tk.Label(master, text="PERIPHERIE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
+<<<<<<< HEAD
         self.fan_toggle = TouchToggle(master, self.theme, "LUEFTER / ABSAUGUNG", "Status", 0, command=self.service.set_fan_enabled)
         self.fan_toggle.pack(fill="x", padx=16, pady=(0, 12))
         self.valve_toggle = TouchToggle(master, self.theme, "PNEUMATIKVENTIL", "Status", 0, command=self.service.set_valve_enabled)
         self.valve_toggle.pack(fill="x", padx=16, pady=(0, 18))
+=======
+        TouchToggle(master, self.theme, "LUEFTER / ABSAUGUNG", "Leistung", 60).pack(fill="x", padx=16, pady=(0, 12))
+        TouchToggle(master, self.theme, "BELEUCHTUNG", "Helligkeit", 80).pack(fill="x", padx=16, pady=(0, 18))
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
         tk.Label(master, text="SYSTEM", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(8, 8))
         self.sensor_status = StatusIndicator(master, self.theme, "Sensor")
@@ -529,7 +632,25 @@ class App:
         return tk.Frame(master, bg=self.theme.panel, highlightthickness=1, highlightbackground=self.theme.border)
 
     def btn(self, master: tk.Misc, text: str, command, fg: str, width: int = 14) -> tk.Button:
+<<<<<<< HEAD
         return tk.Button(master, text=text, command=command, bg=self.theme.panel_alt, fg=fg, activebackground=fg, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", 12, "bold"), width=width, padx=8, pady=10)
+=======
+        return tk.Button(
+            master,
+            text=text,
+            command=command,
+            bg=self.theme.panel_alt,
+            fg=fg,
+            activebackground=fg,
+            activeforeground=self.theme.bg,
+            relief="flat",
+            bd=0,
+            font=("Consolas", 12, "bold"),
+            width=width,
+            padx=8,
+            pady=10,
+        )
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _metric(self, master: tk.Misc, label: str, variable: tk.StringVar) -> tk.Frame:
         frame = tk.Frame(master, bg=self.theme.panel)
@@ -537,11 +658,20 @@ class App:
         top.pack(fill="x")
         tk.Label(top, text=label, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 13)).pack(side="left")
         tk.Label(top, textvariable=variable, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 13)).pack(side="right")
+<<<<<<< HEAD
         canvas = tk.Canvas(frame, height=18, bg=self.theme.panel, highlightthickness=0)
         canvas.pack(fill="x", pady=(6, 0))
         canvas.create_rectangle(0, 6, 260, 14, fill=self.theme.grid, outline="")
         frame.bar = canvas.create_rectangle(0, 6, 20, 14, fill=self.theme.orange, outline="")
         frame.canvas = canvas
+=======
+
+        canvas = tk.Canvas(frame, height=18, bg=self.theme.panel, highlightthickness=0)
+        canvas.pack(fill="x", pady=(6, 0))
+        canvas.create_rectangle(0, 6, 260, 14, fill=self.theme.grid, outline="")
+        frame.bar = canvas.create_rectangle(0, 6, 20, 14, fill=self.theme.orange, outline="")  # type: ignore[attr-defined]
+        frame.canvas = canvas  # type: ignore[attr-defined]
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         return frame
 
     def _slider(self, master: tk.Misc, label: str, variable: tk.DoubleVar, start: float, stop: float, resolution: float, command=None) -> tk.Frame:
@@ -559,7 +689,26 @@ class App:
 
         variable.trace_add("write", refresh)
         refresh()
+<<<<<<< HEAD
         tk.Scale(card, from_=start, to=stop, resolution=resolution, orient="horizontal", variable=variable, showvalue=False, bg=self.theme.panel_alt, fg=self.theme.text, troughcolor=self.theme.bg, activebackground=self.theme.orange, highlightthickness=0, sliderlength=24, bd=0).pack(fill="x", padx=10, pady=(6, 10))
+=======
+        tk.Scale(
+            card,
+            from_=start,
+            to=stop,
+            resolution=resolution,
+            orient="horizontal",
+            variable=variable,
+            showvalue=False,
+            bg=self.theme.panel_alt,
+            fg=self.theme.text,
+            troughcolor=self.theme.bg,
+            activebackground=self.theme.orange,
+            highlightthickness=0,
+            sliderlength=24,
+            bd=0,
+        ).pack(fill="x", padx=10, pady=(6, 10))
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         return card
 
     def _entry(self, master: tk.Misc, label: str, variable: tk.StringVar) -> tk.Frame:
@@ -572,6 +721,7 @@ class App:
         self.page_frames[key].tkraise()
         for name, button in self.nav_buttons.items():
             is_active = name == key
+<<<<<<< HEAD
             button.config(bg=self.theme.panel if is_active else self.theme.panel_alt, fg=self.theme.orange if is_active else self.theme.text)
 
     def start_heating(self) -> None:
@@ -583,14 +733,35 @@ class App:
     def stop_heating(self) -> None:
         self.service.set_heating_enabled(False)
         self.service.set_mode(OperatingMode.OFF)
+=======
+            button.config(
+                bg=self.theme.panel if is_active else self.theme.panel_alt,
+                fg=self.theme.orange if is_active else self.theme.text,
+            )
+
+    def start_heating(self) -> None:
+        self.running = True
+        self.heating_enabled = True
+        self.controller.enable()
+        self.status.set("Heizbetrieb aktiv")
+
+    def stop_heating(self) -> None:
+        self.heating_enabled = False
+        self.controller.disable()
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.status.set("Heizbetrieb gestoppt")
 
     def emergency_stop(self) -> None:
         self.running = False
+<<<<<<< HEAD
         self.service.set_heating_enabled(False)
         self.service.set_mode(OperatingMode.OFF)
         self.service.set_valve_enabled(False)
         self.service.set_fan_enabled(True)
+=======
+        self.heating_enabled = False
+        self.controller.disable()
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.status.set("Notstopp aktiv")
 
     def _schedule(self) -> None:
@@ -601,17 +772,28 @@ class App:
         self.root.after(1000, self._tick_clock)
 
     def tick(self) -> None:
+<<<<<<< HEAD
         status = self.service.latest_status()
         if status.timestamp != self._last_status_timestamp:
             self._last_status_timestamp = status.timestamp
             self._append_live_status(status)
             self._refresh_live_metrics(status)
+=======
+        if self.running:
+            telemetry = self._next_live_telemetry()
+            self.plant.step(self.sample_time)
+            self.elapsed += self.sample_time
+            self._append_chart_sample(self.live_chart, self.elapsed, telemetry)
+            self._record_power(self.elapsed, telemetry.control_output)
+            self._refresh_live_metrics(telemetry)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
         self._tick_preview()
         self._draw_live()
         self._draw_preview()
         self._schedule()
 
+<<<<<<< HEAD
     def _append_live_status(self, status: MachineStatus) -> None:
         self.elapsed += self.sample_time
         self.live_chart.times.append(self.elapsed)
@@ -646,10 +828,53 @@ class App:
         self.fan_toggle.set_state(status.fan_enabled, 100 if status.fan_enabled else 0)
         self.valve_toggle.set_state(status.valve_enabled, 100 if status.valve_enabled else 0)
         self._fill_bar(self.output_bar, status.heater_output_percent, self.theme.orange)
+=======
+    def _next_live_telemetry(self) -> PidTelemetry:
+        if self.heating_enabled:
+            return self.controller.update_once()
+
+        current = self.plant.read()
+        self.plant.stop()
+        return PidTelemetry(
+            self.elapsed,
+            current,
+            float(self.controller.pid.setpoint),
+            0.0,
+            float(self.controller.pid.setpoint - current),
+            0.0,
+            0.0,
+            0.0,
+        )
+
+    def _append_chart_sample(self, chart: ChartState, timestamp: float, telemetry: PidTelemetry) -> None:
+        chart.times.append(timestamp)
+        chart.values.append(telemetry.process_value)
+        chart.setpoints.append(telemetry.setpoint)
+        chart.outputs.append(telemetry.control_output)
+
+    def _refresh_live_metrics(self, telemetry: PidTelemetry) -> None:
+        progress = 0.0
+        if telemetry.setpoint > 0:
+            progress = min(100.0, max(0.0, telemetry.process_value / telemetry.setpoint * 100.0))
+
+        avg_power = self._average_power_watts()
+        self.actual.set(f"{telemetry.process_value:.0f}")
+        self.setpoint.set(f"{telemetry.setpoint:.0f}")
+        self.output.set(f"{telemetry.control_output:.0f} %")
+        self.progress.set(f"{progress:.0f} %")
+        self.avg_power.set(f"{avg_power:.0f} W")
+
+        self.sensor_status.update_state("OK", self.theme.green)
+        self.pid_status.update_state("AKTIV" if self.heating_enabled else "PAUSE", self.theme.green if self.heating_enabled else self.theme.amber)
+        self.heat_status.update_state(f"{progress:.0f} %", self.theme.green if progress >= 99 else self.theme.amber)
+
+        self._fill_bar(self.output_bar, telemetry.control_output, self.theme.orange)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self._fill_bar(self.progress_bar, progress, self.theme.amber)
         self._fill_bar(self.avg_power_bar, (avg_power / self.DISPLAY_MAX_POWER_WATTS) * 100.0, self.theme.green)
 
     def _fill_bar(self, frame: tk.Frame, percent: float, color: str) -> None:
+<<<<<<< HEAD
         width = max(frame.canvas.winfo_width(), 260)
         clamped = max(0.0, min(100.0, percent))
         frame.canvas.itemconfig(frame.bar, fill=color)
@@ -658,6 +883,15 @@ class App:
     def _draw_live(self) -> None:
         current_time = self.live_chart.times[-1] if self.live_chart.times else 0.0
         self._draw_chart(self.temp_canvas, self.live_chart, self.theme.orange, "#3d1d0a", current_time)
+=======
+        width = max(frame.canvas.winfo_width(), 260)  # type: ignore[attr-defined]
+        clamped = max(0.0, min(100.0, percent))
+        frame.canvas.itemconfig(frame.bar, fill=color)  # type: ignore[attr-defined]
+        frame.canvas.coords(frame.bar, 0, 6, max(12, width * clamped / 100.0), 14)  # type: ignore[attr-defined]
+
+    def _draw_live(self) -> None:
+        self._draw_chart(self.temp_canvas, self.live_chart, self.theme.orange, "#3d1d0a", self.elapsed)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _draw_preview(self) -> None:
         self._draw_chart(self.preview_canvas, self.preview_chart, self.theme.green, "#102419", self.preview_elapsed)
@@ -699,6 +933,10 @@ class App:
             y_value = bottom - ((value - vmin) / vspan) * (bottom - top)
             y_setpoint = bottom - ((setpoint - vmin) / vspan) * (bottom - top)
             y_output = bottom - (max(0.0, min(100.0, output)) / 100.0) * ((bottom - top) * 0.32)
+<<<<<<< HEAD
+=======
+
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
             fill_points.extend([x, y_value])
             value_points.extend([x, y_value])
             setpoint_points.extend([x, y_setpoint])
@@ -728,7 +966,15 @@ class App:
             canvas.create_text(x, bottom + 14, text=f"{t0 + ratio * tspan:.0f}", fill=self.theme.muted, font=("Consolas", 10), anchor="n")
 
     def _draw_legend(self, canvas: tk.Canvas, x: int, y: int, process_color: str) -> None:
+<<<<<<< HEAD
         entries = [("Isttemperatur", process_color, None), ("Sollwert", self.theme.amber, (6, 5)), ("Stellwert", self.theme.green, None)]
+=======
+        entries = [
+            ("Isttemperatur", process_color, None),
+            ("Sollwert", self.theme.amber, (6, 5)),
+            ("Stellwert", self.theme.green, None),
+        ]
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         cursor = x
         for label, color, dash in entries:
             canvas.create_line(cursor, y, cursor + 22, y, fill=color, width=3, dash=dash)
@@ -753,6 +999,7 @@ class App:
         self._reset_preview()
 
     def _reset_preview(self) -> None:
+<<<<<<< HEAD
         config = MachineConfig()
         config.pid.kp = self.pid_kp.get()
         config.pid.ki = self.pid_ki.get()
@@ -783,6 +1030,45 @@ class App:
             self.status.set("PID-Werte aus PID-Labor uebernommen")
         except Exception as exc:
             self.status.set(f"PID-Update fehlgeschlagen: {exc}")
+=======
+        self.preview_elapsed = 0.0
+        self.preview_chart = self._create_chart_state(self.preview_sample_time, self.PREVIEW_HISTORY_POINTS)
+        self.preview_plant = FirstOrderPlant.timelapse_demo()
+        self.preview_controller = InjectionMachinePidController(
+            sensor=self.preview_plant,
+            actuator=self.preview_plant,
+            config=PidConfig(
+                kp=self.pid_kp.get(),
+                ki=self.pid_ki.get(),
+                kd=self.pid_kd.get(),
+                setpoint=self.pid_sp.get(),
+                sample_time=self.preview_sample_time,
+                output_limits=(0.0, 100.0),
+                starting_output=0.0,
+            ),
+        )
+
+    def _tick_preview(self) -> None:
+        if self.preview_controller is None or self.preview_plant is None:
+            return
+
+        telemetry = self.preview_controller.update_once()
+        self.preview_plant.step(self.preview_sample_time)
+        self.preview_elapsed += self.preview_sample_time
+        self._append_chart_sample(self.preview_chart, self.preview_elapsed, telemetry)
+
+    def _apply_preview_to_live(self) -> None:
+        self._set_controller_config(
+            Profile(
+                name=self.active_profile,
+                setpoint=self.pid_sp.get(),
+                kp=self.pid_kp.get(),
+                ki=self.pid_ki.get(),
+                kd=self.pid_kd.get(),
+            )
+        )
+        self.status.set("PID-Werte aus PID-Labor uebernommen")
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _rebuild_profile_buttons(self) -> None:
         for child in self.profile_row.winfo_children():
@@ -829,7 +1115,14 @@ class App:
     def _mark_profile(self, name: str) -> None:
         self.active_profile = name
         for key, button in self.profile_buttons.items():
+<<<<<<< HEAD
             button.config(bg=self.theme.panel if key == name else self.theme.panel_alt, fg=self.theme.orange if key == name else self.theme.text)
+=======
+            button.config(
+                bg=self.theme.panel if key == name else self.theme.panel_alt,
+                fg=self.theme.orange if key == name else self.theme.text,
+            )
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _load_profile(self, profile: Profile) -> None:
         self.form_name.set(profile.name)
@@ -843,9 +1136,19 @@ class App:
         if profile.name == self.active_profile:
             return
 
+<<<<<<< HEAD
         confirmed = messagebox.askyesno(title="Materialprofil wechseln", message=f"Moechtest du das Materialprofil wirklich aendern?\n\n{profile.name}", parent=self.root)
         if confirmed:
             self._apply_profile(profile, update_form=True, push_live=True)
+=======
+        confirmed = messagebox.askyesno(
+            title="Materialprofil wechseln",
+            message=f"Moechtest du das Materialprofil wirklich aendern?\n\n{profile.name}",
+            parent=self.root,
+        )
+        if confirmed:
+            self._apply_profile(profile, update_form=True)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def _save_profile(self) -> None:
         name = self.form_name.get().strip() or "NEUES MATERIAL"
@@ -863,6 +1166,7 @@ class App:
         self.status.set(f"Profil {name} gespeichert")
 
     def _apply_form_profile(self) -> None:
+<<<<<<< HEAD
         profile = Profile(self.form_name.get().strip() or "NEUES MATERIAL", self.form_sp.get(), self.form_kp.get(), self.form_ki.get(), self.form_kd.get())
         self._apply_profile(profile, update_form=False, push_live=True)
 
@@ -871,11 +1175,25 @@ class App:
         self.pid_ki.set(profile.ki)
         self.pid_kd.set(profile.kd)
         self.pid_sp.set(profile.setpoint)
+=======
+        profile = Profile(
+            self.form_name.get().strip() or "NEUES MATERIAL",
+            self.form_sp.get(),
+            self.form_kp.get(),
+            self.form_ki.get(),
+            self.form_kd.get(),
+        )
+        self._apply_profile(profile, update_form=False)
+
+    def _apply_profile(self, profile: Profile, update_form: bool) -> None:
+        self._set_controller_config(profile)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
         self.profile_label.set(profile.name)
         self._mark_profile(profile.name)
         if update_form:
             self._load_profile(profile)
         self._reset_preview()
+<<<<<<< HEAD
 
         if push_live:
             try:
@@ -888,6 +1206,24 @@ class App:
     def _on_close(self) -> None:
         self.service.stop()
         self.root.destroy()
+=======
+        self.status.set(f"Profil {profile.name} aktiv")
+
+    def _set_controller_config(self, profile: Profile) -> None:
+        config = self.controller.config
+        config.kp = profile.kp
+        config.ki = profile.ki
+        config.kd = profile.kd
+        config.setpoint = profile.setpoint
+
+        self.controller = InjectionMachinePidController(sensor=self.plant, actuator=self.plant, config=config)
+        self.controller.set_setpoint(profile.setpoint)
+
+        self.pid_kp.set(profile.kp)
+        self.pid_ki.set(profile.ki)
+        self.pid_kd.set(profile.kd)
+        self.pid_sp.set(profile.setpoint)
+>>>>>>> a7674decb32a37ec22279b93dfdef756ca79049a
 
     def run(self) -> None:
         self.root.mainloop()

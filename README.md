@@ -1,61 +1,139 @@
-# Project Context
+# Kolbenspritzgussmaschine
 
-This repository contains the software for a student-built desktop injection molding machine.
+Dieses Repository enthaelt den aktuellen Software-Prototyp fuer eine studentisch entwickelte Kolbenspritzgussmaschine.
 
-The machine melts plastic in a heated crucible and injects it into molds.
+Der Schwerpunkt liegt im Moment auf der Temperaturregelung eines beheizten Systems mit einem PID-Regler. Noch arbeitet der Code mit einer Simulation. Die Struktur ist aber bereits so vorbereitet, dass spaeter reale Sensoren und Aktoren angebunden werden koennen.
 
-The main task of the control software is to regulate the temperature of the crucible.
+## Ziel des Projekts
 
-## Control Problem
+Die Maschine soll Kunststoff erhitzen und kontrolliert verarbeiten. Damit das sicher und reproduzierbar funktioniert, muss die Temperatur zuverlaessig geregelt werden.
 
-The crucible must reach and maintain a temperature between approximately 200°C and 300°C.
+Dafuer wird ein PID-Regler verwendet:
+- Der Sensor liefert den aktuellen Istwert.
+- Der Regler vergleicht Istwert und Sollwert.
+- Daraus wird ein Stellwert fuer die Heizung berechnet.
+- Die Heizung beeinflusst den Prozess.
 
-Heating is done with cartridge heaters.
+## Aktueller Stand
 
-Temperature is measured using a thermocouple sensor.
+Der aktuelle Code ist ein Lern- und Entwicklungsstand mit folgenden Bausteinen:
+- ein wiederverwendbarer PID-Controller im Paket unter `src/`
+- eine einfache thermische Simulation als Ersatz fuer reale Hardware
+- ein Konsolenskript zur Beobachtung des Regelverhaltens
+- ein Live-Plot zur Visualisierung von Istwert, Sollwert und Stellwert
 
-The controller uses a PID algorithm to regulate heater power.
+## Projektstruktur
 
-## Control Loop
+- `src/kolbenspritzgussmaschine/pid_control.py`
+  Zentrale Reglerlogik mit Konfiguration, Telemetrie und Sicherheitsfunktionen.
 
-Control loop structure:
+- `src/kolbenspritzgussmaschine/__init__.py`
+  Oeffentliche Paket-API fuer Importe aus anderen Modulen.
 
-Temperature Sensor
-→ temperature measurement
+- `scripts/pid_simulation.py`
+  Startet eine einfache Simulation und gibt Reglerwerte in der Konsole aus.
 
-PID Controller
-→ compute heater power
+- `scripts/pid_live_plot.py`
+  Zeigt die simulierten Reglerdaten als Live-Diagramm mit Matplotlib.
 
-Heater Driver
-→ set heating power
+- `scripts/_bootstrap.py`
+  Hilfsdatei, damit die Skripte beim direkten Starten die lokalen Module finden.
 
-Safety System
-→ shutdown on fault
+## So funktioniert der Regelkreis
 
-## Safety Requirements
+Vereinfacht laeuft ein Zyklus so ab:
 
-The system must shut down heating if:
+1. Der Sensor liefert einen Temperaturwert.
+2. Der PID-Regler berechnet daraus einen neuen Stellwert.
+3. Der Stellwert wird an die Heizung weitergegeben.
+4. Die Temperatur aendert sich.
+5. Der naechste Zyklus beginnt.
 
-- sensor failure occurs
-- temperature exceeds safety limit
-- controller stops responding
+Im aktuellen Projekt wird dieser Ablauf nicht mit echter Hardware, sondern mit einer simulierten Anlage getestet.
 
-## User Interface
+## Installation
 
-The machine will be operated via a touchscreen GUI.
+Voraussetzungen:
+- Python 3
+- `pip`
 
-GUI should allow:
+Abhaengigkeiten installieren:
 
-- display current temperature
-- set target temperature
-- start/stop heating
-- display system status
-- show error messages
+```bash
+pip install -r requirements.txt
+```
 
-## Development Notes
+Aktuell wird benoetigt:
+- `simple-pid`
+- fuer den Plot zusaetzlich `matplotlib`
 
-The control loop must run independently of the GUI.
+Falls `matplotlib` noch fehlt:
 
-The GUI should not directly control hardware.
+```bash
+pip install matplotlib
+```
 
-Instead, the GUI communicates with the controller application.
+## Beispiele ausfuehren
+
+Simulation in der Konsole starten:
+
+```bash
+python scripts/pid_simulation.py
+```
+
+Live-Plot starten:
+
+```bash
+python scripts/pid_live_plot.py
+```
+
+## Bedeutung der wichtigsten Begriffe
+
+- Istwert:
+  Der aktuell gemessene Wert, zum Beispiel die aktuelle Temperatur.
+
+- Sollwert:
+  Der Zielwert, den der Regler erreichen soll.
+
+- Stellwert:
+  Das Ausgangssignal des Reglers, zum Beispiel die Heizleistung in Prozent.
+
+- PID:
+  Eine Reglerart aus drei Anteilen:
+  proportional, integral und differential.
+
+## Wie der Umbau auf reale Hardware spaeter aussieht
+
+Die vorhandene Struktur ist absichtlich so aufgebaut, dass der Kern des Reglers erhalten bleiben kann.
+
+Spaeter muessen vor allem diese Teile ersetzt werden:
+- Die Simulationsklasse `FirstOrderPlant` durch echte Hardwareklassen
+- Das Lesen des Prozesswerts durch einen echten Temperatursensor
+- Das Schreiben des Stellwerts an einen echten Heiztreiber oder ein SSR
+
+Die zentrale Idee dabei:
+- Eine Sensorklasse implementiert `read()`
+- Eine Aktorklasse implementiert `write()` und `stop()`
+- Beide werden an `InjectionMachinePidController` uebergeben
+
+Damit kann dieselbe Reglerlogik weiterverwendet werden, egal ob die Daten aus einer Simulation oder von der realen Maschine kommen.
+
+## Sicherheit
+
+Bei realer Hardware muss Sicherheit deutlich strenger behandelt werden als in der aktuellen Simulation.
+
+Wichtige Punkte fuer spaeter:
+- Abschalten bei Sensorfehlern
+- Abschalten bei ueberhoehter Temperatur
+- Abschalten bei haengendem oder zu langsamem Regelkreis
+- definierter sicherer Zustand fuer die Heizung
+
+Im Code gibt es dafuer bereits erste Struktur, zum Beispiel ueber `stop()` und `assert_fresh()`.
+
+## Naechste sinnvolle Schritte
+
+- Reale Sensor- und Aktorklassen anlegen
+- Messwerte sauber loggen
+- Grenzwerte und Fehlerfaelle explizit behandeln
+- GUI oder Bedienoberflaeche getrennt vom Regler aufbauen
+- PID-Werte mit realen Messdaten abstimmen
