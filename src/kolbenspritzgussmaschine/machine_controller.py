@@ -3,7 +3,7 @@ from __future__ import annotations
 from time import monotonic
 
 from .config import MachineConfig, OperatingMode, PidConfig
-from .interfaces import HeaterActuatorAdapter, MachineHardware, TemperatureSensorAdapter
+from .interfaces import MachineHardware, RampingHeaterActuatorAdapter, TemperatureSensorAdapter
 from .models import ErrorCode, FaultState, MachineStatus
 from .pid_control import InjectionMachinePidController, PidTelemetry
 from .safety_manager import SafetyManager
@@ -31,7 +31,7 @@ class MachineController:
     def _build_pid_controller(self, pid_config: PidConfig) -> InjectionMachinePidController:
         return InjectionMachinePidController(
             sensor=TemperatureSensorAdapter(self.hardware.sensor),
-            actuator=HeaterActuatorAdapter(self.hardware.heater),
+            actuator=RampingHeaterActuatorAdapter(self.hardware.heater, ramp_up_seconds=self.config.heater.ramp_up_seconds),
             config=pid_config,
             max_stale_seconds=self.config.safety.controller_timeout_s,
         )
@@ -58,9 +58,11 @@ class MachineController:
         self._heater_test_deadline = None
         if mode == OperatingMode.OFF:
             self.heating_enabled = False
+            self.pid_controller.disable()
             self.hardware.heater.disable()
         elif mode == OperatingMode.TEST:
             self.heating_enabled = False
+            self.pid_controller.disable()
             self.hardware.heater.disable()
         elif mode == OperatingMode.AUTO:
             self.heating_enabled = True
@@ -73,6 +75,7 @@ class MachineController:
         self.mode = OperatingMode.OFF
         self.heating_enabled = False
         self._heater_test_deadline = None
+        self.pid_controller.disable()
         self._apply_outputs()
 
     def set_overtemperature_limit(self, temperature_c: float) -> None:
@@ -122,6 +125,7 @@ class MachineController:
         self.hardware.heater.disable()
         self.hardware.fan.disable()
         self.hardware.valve.disable()
+        self.pid_controller.disable()
 
     def _apply_outputs(self) -> None:
         self.hardware.heater.disable()
@@ -151,6 +155,7 @@ class MachineController:
             self._last_telemetry = None
         else:
             self._heater_test_deadline = None
+            self.pid_controller.disable()
             self.hardware.heater.disable()
             self._last_telemetry = None
 

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass
+from time import monotonic
 from typing import Protocol
 
 from .pid_control import ActuatorProtocol, SensorProtocol
@@ -59,4 +60,36 @@ class HeaterActuatorAdapter(ActuatorProtocol):
         self.heater.set_power_percent(value)
 
     def stop(self) -> None:
+        self.heater.disable()
+
+
+@dataclass(slots=True)
+class RampingHeaterActuatorAdapter(ActuatorProtocol):
+    heater: HeaterOutput
+    ramp_up_seconds: float = 10.0
+    _ramp_started_at: float | None = None
+
+    def write(self, value: float) -> float:
+        requested = max(0.0, min(100.0, value))
+        if requested <= 0.0:
+            self._ramp_started_at = None
+            self.heater.set_power_percent(0.0)
+            return 0.0
+
+        now = monotonic()
+        if self._ramp_started_at is None:
+            self._ramp_started_at = now
+
+        if self.ramp_up_seconds <= 0.0:
+            applied = requested
+        else:
+            elapsed = max(0.0, now - self._ramp_started_at)
+            ramp_limit = min(100.0, (elapsed / self.ramp_up_seconds) * 100.0)
+            applied = min(requested, ramp_limit)
+
+        self.heater.set_power_percent(applied)
+        return applied
+
+    def stop(self) -> None:
+        self._ramp_started_at = None
         self.heater.disable()

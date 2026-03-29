@@ -112,7 +112,7 @@ class SensorProtocol(Protocol):
 
 
 class ActuatorProtocol(Protocol):
-    def write(self, value: float) -> None:
+    def write(self, value: float) -> float:
         """Apply a new actuator output."""
 
     def stop(self) -> None:
@@ -174,8 +174,8 @@ class InjectionMachinePidController:
         self.actuator.stop()
 
     def update_from_measurement(self, process_value: float) -> PidTelemetry:
-        output = float(self._pid(process_value))
-        self.actuator.write(output)
+        requested_output = float(self._pid(process_value))
+        applied_output = float(self.actuator.write(requested_output))
 
         now = monotonic()
         self._last_update = now
@@ -184,7 +184,7 @@ class InjectionMachinePidController:
             timestamp=now,
             process_value=process_value,
             setpoint=float(self._pid.setpoint),
-            control_output=output,
+            control_output=applied_output,
             error=float(self._pid.setpoint - process_value),
             proportional=float(proportional),
             integral=float(integral),

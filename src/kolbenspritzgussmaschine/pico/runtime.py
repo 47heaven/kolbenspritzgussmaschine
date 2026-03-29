@@ -64,6 +64,7 @@ class PicoRuntime:
         self.heater_output_percent = 0.0
         self.heater_test_until = None
         self.fan_auto_until = None
+        self._heater_ramp_started_at = None
         self._last_control_at = monotonic()
         self._apply_safe_boot_state()
         self._read_temperature()
@@ -79,6 +80,7 @@ class PicoRuntime:
         self.heating_enabled = False
         self.heater_test_until = None
         self.heater_output_percent = 0.0
+        self._heater_ramp_started_at = None
         self.safety.apply_safe_state(self.heater, self.fan, self.valve)
 
     def _clear_fault(self) -> None:
@@ -87,8 +89,23 @@ class PicoRuntime:
         self.heating_enabled = False
         self.heater_test_until = None
         self.heater_output_percent = 0.0
+        self._heater_ramp_started_at = None
         self.pid.reset()
         self._apply_safe_boot_state()
+
+    def _apply_heater_ramp(self, requested_percent: float, now: float) -> float:
+        requested = max(0.0, min(100.0, requested_percent))
+        if requested <= 0.0:
+            self._heater_ramp_started_at = None
+            return 0.0
+        if self._heater_ramp_started_at is None:
+            self._heater_ramp_started_at = now
+        ramp_seconds = getattr(self.config.heater, "ramp_up_seconds", 0.0)
+        if ramp_seconds <= 0.0:
+            return requested
+        elapsed = max(0.0, now - self._heater_ramp_started_at)
+        ramp_limit = min(100.0, (elapsed / ramp_seconds) * 100.0)
+        return min(requested, ramp_limit)
 
     def _read_temperature(self) -> None:
         try:
@@ -118,17 +135,21 @@ class PicoRuntime:
     def _update_control(self, now: float) -> None:
         if self.fault.code != ErrorCode.NONE:
             self.heater_output_percent = 0.0
+            self._heater_ramp_started_at = None
             self.heater.disable()
             return
         if self.mode == OperatingMode.AUTO and self.heating_enabled and self.temperature_c is not None:
-            self.heater_output_percent = self.pid.compute(self.temperature_c)
+            requested_output = self.pid.compute(self.temperature_c)
+            self.heater_output_percent = self._apply_heater_ramp(requested_output, now)
             self.heater.set_power_percent(self.heater_output_percent)
         elif self.mode == OperatingMode.TEST and self.heater_test_until is not None and now < self.heater_test_until and self.sensor_ok:
+            self._heater_ramp_started_at = None
             self.heater_output_percent = 100.0
             self.heater.set_power_percent(100.0)
         else:
             self.heater_test_until = None
             self.heater_output_percent = 0.0
+            self._heater_ramp_started_at = None
             self.heater.disable()
         self.heater.update()
         self.valve.set_enabled(self.valve_enabled if self.mode != OperatingMode.FAULT else False)
@@ -186,6 +207,7 @@ class PicoRuntime:
                 self.mode = requested
                 if requested != OperatingMode.AUTO:
                     self.heating_enabled = False
+                    self._heater_ramp_started_at = None
                 if requested == OperatingMode.OFF:
                     self.heater.disable()
                     self.valve.disable()
@@ -214,6 +236,7 @@ class PicoRuntime:
                     raise RuntimeError("Heating can only be enabled in AUTO mode.")
                 self.heating_enabled = enabled
                 if not enabled:
+                    self._heater_ramp_started_at = None
                     self.heater.disable()
                 return self._ack()
             if command == "set_fan":

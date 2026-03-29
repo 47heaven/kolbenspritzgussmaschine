@@ -4,11 +4,12 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+import math
 from pathlib import Path
 import os
 import sys
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
@@ -19,6 +20,15 @@ from kolbenspritzgussmaschine.config import MachineConfig, OperatingMode, Runtim
 from kolbenspritzgussmaschine.models import MachineStatus
 from kolbenspritzgussmaschine.services.controller_service import ControllerService, PicoGateway, SimulationGateway
 from kolbenspritzgussmaschine.communication.client import PicoControllerClient, SerialLineTransport
+
+try:
+    import serial.tools.list_ports  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover
+    serial = None  # type: ignore[assignment]
+
+
+def scaled_size(size: int) -> int:
+    return max(1, round(size * 1.3106))
 
 
 @dataclass(slots=True)
@@ -52,7 +62,7 @@ class ChartState:
     setpoints: deque[float]
     outputs: deque[float]
     sample_time: float
-    max_points: int
+    max_points: int | None
 
 
 class TouchToggle(tk.Frame):
@@ -68,60 +78,145 @@ class TouchToggle(tk.Frame):
     ) -> None:
         super().__init__(master, bg=theme.panel_alt, highlightthickness=1, highlightbackground=theme.border)
         self.enabled = tk.BooleanVar(value=False)
-        self.value = tk.IntVar(value=initial_percent)
         self._command = command
         self._theme = theme
+        self._on_text = "EIN" if "VENTIL" in title.upper() else "AN"
+        self._off_text = "AUS"
 
-        tk.Label(self, text=title, bg=theme.panel_alt, fg=theme.muted, font=("Consolas", 11)).pack(anchor="w", padx=14, pady=(12, 10))
+        top = tk.Frame(self, bg=theme.panel_alt)
+        top.pack(fill="x", padx=16, pady=(12, 10))
+        text_col = tk.Frame(top, bg=theme.panel_alt)
+        text_col.pack(side="left", fill="both", expand=True)
+        title_label = tk.Label(text_col, text=title, bg=theme.panel_alt, fg=theme.text, font=("Consolas", scaled_size(13), "bold"))
+        title_label.pack(anchor="w")
+        self.status_label = tk.Label(text_col, text="AUS", bg=theme.panel_alt, fg=theme.muted, font=("Consolas", scaled_size(10)))
+        self.status_label.pack(anchor="w", pady=(2, 0))
 
-        row = tk.Frame(self, bg=theme.panel_alt)
-        row.pack(fill="x", padx=14)
-        tk.Label(row, text="Ein/Aus", bg=theme.panel_alt, fg=theme.text, font=("Consolas", 13)).pack(side="left")
-        tk.Checkbutton(
-            row,
-            variable=self.enabled,
-            command=self._emit,
+        self.switch_canvas = tk.Canvas(
+            top,
+            width=88,
+            height=46,
             bg=theme.panel_alt,
-            activebackground=theme.panel_alt,
-            selectcolor=theme.panel_alt,
-            indicatoron=False,
-            offrelief="flat",
-            relief="flat",
-            fg=theme.text,
-            activeforeground=theme.text,
-            text="AN",
-            font=("Consolas", 11, "bold"),
-        ).pack(side="right")
-
-        slider_row = tk.Frame(self, bg=theme.panel_alt)
-        slider_row.pack(fill="x", padx=14, pady=(10, 12))
-        tk.Label(slider_row, text=subtitle, bg=theme.panel_alt, fg=theme.muted, font=("Consolas", 11)).pack(side="left")
-        tk.Label(slider_row, textvariable=self.value, bg=theme.panel_alt, fg=theme.orange, font=("Consolas", 13, "bold")).pack(side="right")
-
-        tk.Scale(
-            self,
-            from_=0,
-            to=100,
-            orient="horizontal",
-            variable=self.value,
-            showvalue=False,
-            state="disabled",
-            bg=theme.panel_alt,
-            fg=theme.text,
-            troughcolor=theme.bg,
-            activebackground=theme.orange,
             highlightthickness=0,
-            sliderlength=24,
-            bd=0,
-        ).pack(fill="x", padx=10, pady=(0, 10))
+            cursor="hand2",
+        )
+        self.switch_canvas.pack(side="right")
+        self.switch_canvas.bind("<Button-1>", self._toggle)
+        self.bind("<Button-1>", self._toggle)
+        top.bind("<Button-1>", self._toggle)
+        text_col.bind("<Button-1>", self._toggle)
+        title_label.bind("<Button-1>", self._toggle)
+        self.status_label.bind("<Button-1>", self._toggle)
+        self._draw_switch()
+
+    def _draw_switch(self) -> None:
+        self.switch_canvas.delete("all")
+        enabled = self.enabled.get()
+        track_fill = self._theme.green if enabled else "#203244"
+        track_outline = "#3a5872" if enabled else "#2a3d4f"
+        knob_left = 42 if enabled else 8
+        self._rounded_rect(6, 8, 82, 38, radius=15, fill=track_fill, outline=track_outline, width=2)
+        self.switch_canvas.create_oval(knob_left + 1, 9, knob_left + 29, 37, fill="#d7e0ea", outline="")
+        self.switch_canvas.create_oval(knob_left, 8, knob_left + 28, 36, fill="#f9fcff", outline="#dbe5ee", width=1)
+        self.status_label.config(
+            text=self._on_text if enabled else self._off_text,
+            fg=self._theme.green if enabled else self._theme.muted,
+        )
+
+    def _rounded_rect(self, x0: int, y0: int, x1: int, y1: int, radius: int, **kwargs) -> None:
+        self.switch_canvas.create_arc(x0, y0, x0 + radius * 2, y0 + radius * 2, start=90, extent=90, style="pieslice", **kwargs)
+        self.switch_canvas.create_arc(x1 - radius * 2, y0, x1, y0 + radius * 2, start=0, extent=90, style="pieslice", **kwargs)
+        self.switch_canvas.create_arc(x0, y1 - radius * 2, x0 + radius * 2, y1, start=180, extent=90, style="pieslice", **kwargs)
+        self.switch_canvas.create_arc(x1 - radius * 2, y1 - radius * 2, x1, y1, start=270, extent=90, style="pieslice", **kwargs)
+        self.switch_canvas.create_rectangle(x0 + radius, y0, x1 - radius, y1, **kwargs)
+        self.switch_canvas.create_rectangle(x0, y0 + radius, x1, y1 - radius, **kwargs)
 
     def set_state(self, enabled: bool, value: int) -> None:
         self.enabled.set(enabled)
-        self.value.set(value)
+        self._draw_switch()
 
     def _emit(self) -> None:
         if self._command is not None:
             self._command(self.enabled.get())
+
+    def _toggle(self, _event=None) -> None:
+        self.enabled.set(not self.enabled.get())
+        self._draw_switch()
+        self._emit()
+
+
+class HeaterPowerGauge(tk.Frame):
+    def __init__(self, master: tk.Misc, theme: UiTheme) -> None:
+        super().__init__(master, bg=theme.panel_alt, highlightthickness=1, highlightbackground=theme.border)
+        self._theme = theme
+        self._percent = 0.0
+
+        tk.Label(self, text="HEIZLEISTUNG", bg=theme.panel_alt, fg=theme.muted, font=("Consolas", scaled_size(13))).pack(anchor="w", padx=16, pady=(12, 6))
+
+        self.canvas = tk.Canvas(self, height=184, bg=theme.panel_alt, highlightthickness=0)
+        self.canvas.pack(fill="x", padx=12, pady=(0, 12))
+        self.canvas.bind("<Configure>", self._redraw)
+
+    def set_percent(self, percent: float) -> None:
+        self._percent = max(0.0, min(100.0, percent))
+        self._redraw()
+
+    def _redraw(self, _event=None) -> None:
+        self.canvas.delete("all")
+        width = max(self.canvas.winfo_width(), 300)
+        height = max(self.canvas.winfo_height(), 184)
+        center_x = width / 2
+        center_y = height - 18
+        radius = min(width * 0.31, height - 44)
+
+        start_angle = math.pi
+        end_angle = 0.0
+        for tick in range(11):
+            ratio = tick / 10
+            angle = start_angle + (end_angle - start_angle) * ratio
+            outer_x = center_x + math.cos(angle) * radius
+            outer_y = center_y - math.sin(angle) * radius
+            inner_radius = radius - (24 if tick in (0, 5, 10) else 16)
+            inner_x = center_x + math.cos(angle) * inner_radius
+            inner_y = center_y - math.sin(angle) * inner_radius
+            self.canvas.create_line(inner_x, inner_y, outer_x, outer_y, fill=self._theme.text, width=4 if tick in (0, 5, 10) else 3)
+            label_radius = radius + 20
+            label_x = center_x + math.cos(angle) * label_radius
+            label_y = center_y - math.sin(angle) * label_radius
+            self.canvas.create_text(label_x, label_y, text=f"{tick * 10}", fill=self._theme.muted, font=("Consolas", scaled_size(10), "bold"))
+
+        self.canvas.create_arc(
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+            start=180,
+            extent=-180,
+            style="arc",
+            outline=self._theme.grid,
+            width=18,
+        )
+        self.canvas.create_arc(
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+            start=180,
+            extent=-(180 * (self._percent / 100.0)),
+            style="arc",
+            outline=self._theme.orange,
+            width=18,
+        )
+
+        angle = start_angle + (end_angle - start_angle) * (self._percent / 100.0)
+        marker_outer_radius = radius + 6
+        marker_inner_radius = radius - 18
+        marker_outer_x = center_x + math.cos(angle) * marker_outer_radius
+        marker_outer_y = center_y - math.sin(angle) * marker_outer_radius
+        marker_inner_x = center_x + math.cos(angle) * marker_inner_radius
+        marker_inner_y = center_y - math.sin(angle) * marker_inner_radius
+        self.canvas.create_line(marker_inner_x, marker_inner_y, marker_outer_x, marker_outer_y, fill="#f7fbff", width=7)
+        self.canvas.create_text(center_x, center_y - radius * 0.34, text=f"{round(self._percent):.0f} %", fill=self._theme.orange, font=("Consolas", scaled_size(24), "bold"))
 
 
 class StatusIndicator(tk.Frame):
@@ -131,8 +226,8 @@ class StatusIndicator(tk.Frame):
         self.dot.grid(row=0, column=0, padx=(12, 8), pady=10)
         self.dot_id = self.dot.create_oval(4, 4, 14, 14, fill=theme.green, outline="")
 
-        tk.Label(self, text=label, bg=theme.panel_alt, fg=theme.text, font=("Consolas", 12)).grid(row=0, column=1, sticky="w")
-        self.value_widget = tk.Label(self, text="OK", bg=theme.panel_alt, fg=theme.text, font=("Consolas", 12, "bold"))
+        tk.Label(self, text=label, bg=theme.panel_alt, fg=theme.text, font=("Consolas", scaled_size(12))).grid(row=0, column=1, sticky="w")
+        self.value_widget = tk.Label(self, text="OK", bg=theme.panel_alt, fg=theme.text, font=("Consolas", scaled_size(12), "bold"))
         self.value_widget.grid(row=0, column=2, padx=(8, 12), sticky="e")
         self.grid_columnconfigure(1, weight=1)
 
@@ -228,17 +323,37 @@ class ServiceWindow:
         self.overtemp_var.set(f'{status.overtemperature_limit_c:.1f}')
         self.window.after(300, self._refresh)
 
-def build_service() -> ControllerService:
-    mode = RuntimeMode(os.getenv("KOLBEN_MODE", RuntimeMode.SIMULATION.value))
+def list_serial_ports() -> list[str]:
+    if serial is None:
+        return []
+    return [port.device for port in serial.tools.list_ports.comports()]
+
+
+def auto_serial_port() -> str | None:
+    ports = list_serial_ports()
+    if not ports:
+        return None
+    preferred = [port for port in ports if "ACM" in port or "USB" in port or "COM" in port]
+    return preferred[0] if preferred else ports[0]
+
+
+def build_service(mode: RuntimeMode = RuntimeMode.SERIAL, serial_port: str | None = None) -> ControllerService:
     sensor = TemperatureSensorConfig.for_element(SensorElement(os.getenv("KOLBEN_SENSOR", "pt100")))
     config = MachineConfig(mode=mode, sensor=sensor)
     config.pid.setpoint = float(os.getenv("KOLBEN_SETPOINT", "230.0"))
-
     if mode == RuntimeMode.SERIAL:
-        port = os.getenv("KOLBEN_SERIAL_PORT", config.serial.port)
+        port = serial_port or os.getenv("KOLBEN_SERIAL_PORT", auto_serial_port() or "")
+        if not port:
+            raise RuntimeError("Kein serieller Port gefunden. Bitte Pico anschliessen.")
         baudrate = int(os.getenv("KOLBEN_SERIAL_BAUDRATE", str(config.serial.baudrate)))
         transport = SerialLineTransport(port=port, baudrate=baudrate, timeout_s=config.serial.timeout_s)
-        gateway = PicoGateway(PicoControllerClient(transport))
+        client = PicoControllerClient(transport)
+        try:
+            client.ping()
+        except Exception:
+            transport.close()
+            raise
+        gateway = PicoGateway(client)
     else:
         gateway = SimulationGateway(config)
     return ControllerService(gateway, poll_interval_s=config.status_interval_s)
@@ -248,14 +363,20 @@ class App:
     WINDOW_SIZE = "1360x820"
     DISPLAY_MAX_POWER_WATTS = 800.0
     POWER_AVERAGE_WINDOW_SECONDS = 5.0
-    LIVE_HISTORY_POINTS = 300
+    LIVE_HISTORY_POINTS = None
     PREVIEW_HISTORY_POINTS = 220
-    PROFILE_COLUMNS = 2
+    PROFILE_COLUMNS = 3
 
     def __init__(self) -> None:
         self.theme = UiTheme()
         self.root = self._build_root()
-        self.service = build_service()
+        self.serial_port = os.getenv("KOLBEN_SERIAL_PORT", auto_serial_port() or "")
+        self.connection_notice: str | None = None
+        try:
+            self.service = build_service(RuntimeMode.SERIAL, self.serial_port)
+        except Exception as exc:
+            self.connection_notice = f"COM-Port nicht erreichbar. GUI wurde im Simulationsmodus geoeffnet.\n\n{exc}"
+            self.service = build_service(RuntimeMode.SIMULATION)
         self.service_window = ServiceWindow(self.root, self.theme, self.service)
 
         self.sample_time = 0.2
@@ -280,9 +401,13 @@ class App:
         self._rebuild_profile_list()
         self._apply_profile(self.profiles[0], update_form=True, push_live=False)
         self._reset_preview()
+        self._refresh_connection_ui()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.service.start()
+        if self.connection_notice:
+            self.status.set("Simulation aktiv - COM-Port nicht erreichbar")
+            self.root.after(150, lambda: messagebox.showwarning("Simulationsmodus aktiv", self.connection_notice, parent=self.root))
         self._tick_clock()
         self._schedule()
 
@@ -293,7 +418,7 @@ class App:
         root.configure(bg=self.theme.bg)
         return root
 
-    def _create_chart_state(self, sample_time: float, max_points: int) -> ChartState:
+    def _create_chart_state(self, sample_time: float, max_points: int | None) -> ChartState:
         return ChartState(
             times=deque(maxlen=max_points),
             values=deque(maxlen=max_points),
@@ -315,10 +440,13 @@ class App:
         self.status = tk.StringVar(value="Heizbetrieb aktiv (Service-Architektur)")
         self.actual = tk.StringVar(value="22")
         self.setpoint = tk.StringVar(value="200")
+        self.temperature_pair = tk.StringVar(value="22 C / 200 C")
         self.output = tk.StringVar(value="0 %")
         self.progress = tk.StringVar(value="0 %")
         self.avg_power = tk.StringVar(value="0 W")
         self.profile_label = tk.StringVar(value=self.active_profile)
+        self.connection_state = tk.StringVar(value="Live verbunden" if self.service.mode == RuntimeMode.SERIAL else "Simulation aktiv")
+        self.connection_port_var = tk.StringVar(value=self.serial_port)
 
         self.pid_kp = tk.DoubleVar(value=self.profiles[0].kp)
         self.pid_ki = tk.DoubleVar(value=self.profiles[0].ki)
@@ -334,18 +462,21 @@ class App:
     def _init_widget_refs(self) -> None:
         self.nav_buttons: dict[str, tk.Button] = {}
         self.profile_buttons: dict[str, tk.Button] = {}
-        self.output_bar: tk.Frame
-        self.progress_bar: tk.Frame
         self.avg_power_bar: tk.Frame
         self.temp_canvas: tk.Canvas
         self.preview_canvas: tk.Canvas
         self.profile_row: tk.Frame
         self.profile_list: tk.Frame
+        self.connection_port_box: ttk.Combobox
         self.sensor_status: StatusIndicator
         self.pid_status: StatusIndicator
         self.heat_status: StatusIndicator
         self.fan_toggle: TouchToggle
         self.valve_toggle: TouchToggle
+        self.power_gauge: HeaterPowerGauge
+        self.dashboard_layout: tk.Frame
+        self.dashboard_left_card: tk.Frame
+        self.dashboard_right_card: tk.Frame
 
     def _build_ui(self) -> None:
         outer = tk.Frame(self.root, bg=self.theme.bg)
@@ -357,21 +488,27 @@ class App:
     def _build_header(self, master: tk.Misc) -> None:
         header = self.card(master)
         header.pack(fill="x")
-        tk.Label(header, text="<> TIEGEL-STEUERUNG V1.0", bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", 18, "bold")).pack(side="left", padx=16, pady=12)
-        tk.Label(header, textvariable=self.status, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 11)).pack(side="left", padx=12)
+        tk.Label(header, text="<> TIEGEL-STEUERUNG V1.0", bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", scaled_size(18), "bold")).pack(side="left", padx=16, pady=12)
+        tk.Label(header, textvariable=self.status, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(11))).pack(side="left", padx=12)
         self.btn(header, "HEIZEN START", self.start_heating, self.theme.green).pack(side="left", padx=(20, 8))
         self.btn(header, "HEIZEN STOPP", self.stop_heating, self.theme.amber).pack(side="left")
         self.btn(header, "SERVICE", self.service_window.open, self.theme.orange, 10).pack(side="right", padx=(0, 16))
-        tk.Label(header, textvariable=self.clock, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 16)).pack(side="right", padx=16)
+        tk.Label(header, textvariable=self.clock, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", scaled_size(16))).pack(side="right", padx=16)
 
     def _build_navigation(self, master: tk.Misc) -> None:
         nav = tk.Frame(master, bg=self.theme.bg)
         nav.pack(fill="x", pady=(12, 0))
+        nav_left = tk.Frame(nav, bg=self.theme.bg)
+        nav_left.pack(side="left")
+        nav_right = tk.Frame(nav, bg=self.theme.bg)
+        nav_right.pack(side="right")
+
         entries = [("dashboard", "DASHBOARD"), ("pid", "PID-LABOR"), ("profiles", "MATERIALPROFILE")]
         for key, label in entries:
-            button = tk.Button(master=nav, text=label, command=lambda current=key: self.show_page(current), bg=self.theme.panel_alt, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", 13, "bold"), padx=18, pady=12)
+            button = tk.Button(master=nav_left, text=label, command=lambda current=key: self.show_page(current), bg=self.theme.panel_alt, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", scaled_size(13), "bold"), padx=18, pady=12)
             button.pack(side="left", padx=(0, 10))
             self.nav_buttons[key] = button
+        self._build_connection_controls(nav_right, compact=True)
 
     def _build_pages(self, master: tk.Misc) -> None:
         pages = tk.Frame(master, bg=self.theme.bg)
@@ -389,58 +526,90 @@ class App:
 
     def _build_dashboard(self, master: tk.Misc) -> tk.Frame:
         page = tk.Frame(master, bg=self.theme.bg)
-        page.grid_columnconfigure(0, weight=3)
-        page.grid_columnconfigure(1, weight=6)
-        page.grid_columnconfigure(2, weight=3)
+        self.dashboard_layout = tk.Frame(page, bg=self.theme.bg)
+        self.dashboard_layout.pack(fill="both", expand=True)
 
-        left = self.card(page)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        center = self.card(page)
-        center.grid(row=0, column=1, sticky="nsew", padx=5)
-        right = self.card(page)
-        right.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
+        self.dashboard_left_card = self.card(self.dashboard_layout)
+        self.dashboard_right_card = self.card(self.dashboard_layout)
+        self.dashboard_layout.bind("<Configure>", self._layout_dashboard_cards)
 
-        self._build_dashboard_left(left)
-        self._build_dashboard_center(center)
-        self._build_dashboard_right(right)
+        self._build_dashboard_left(self.dashboard_left_card)
+        self._build_dashboard_center(self.dashboard_right_card)
         return page
 
+    def _layout_dashboard_cards(self, event) -> None:
+        width = max(1, event.width)
+        height = max(1, event.height)
+        gap = 16
+        left_width = int((width - gap) * 0.3333)
+        right_width = max(1, width - left_width - gap)
+        self.dashboard_left_card.place(x=0, y=0, width=left_width, height=height)
+        self.dashboard_right_card.place(x=left_width + gap, y=0, width=right_width, height=height)
+
     def _build_dashboard_left(self, master: tk.Misc) -> None:
-        tk.Label(master, text="TEMPERATUR", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
-        tk.Label(master, textvariable=self.actual, bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", 48)).pack(pady=(16, 0))
-        tk.Label(master, text="ISTTEMPERATUR", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack()
+        tk.Label(master, text="TEMPERATUR", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=16, pady=(14, 6))
+        tk.Label(master, textvariable=self.temperature_pair, bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", scaled_size(30), "bold")).pack(anchor="w", padx=16)
+        tk.Label(master, text="IST / SOLL", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(12))).pack(anchor="w", padx=18, pady=(2, 12))
 
-        info = tk.Frame(master, bg=self.theme.bg, highlightthickness=1, highlightbackground=self.theme.border)
-        info.pack(fill="x", padx=16, pady=12)
-        tk.Label(info, text="SOLL", bg=self.theme.bg, fg=self.theme.muted, font=("Consolas", 13)).pack(anchor="w", padx=12, pady=(12, 4))
-        tk.Label(info, textvariable=self.setpoint, bg=self.theme.bg, fg=self.theme.orange, font=("Consolas", 28, "bold")).pack(anchor="e", padx=12, pady=(0, 12))
+        self.power_gauge = HeaterPowerGauge(master, self.theme)
+        self.power_gauge.pack(fill="x", padx=16, pady=(0, 12))
 
-        self.output_bar = self._metric(master, "Heizleistung", self.output)
-        self.output_bar.pack(fill="x", padx=16, pady=8)
-        self.progress_bar = self._metric(master, "Aufheizen", self.progress)
-        self.progress_bar.pack(fill="x", padx=16, pady=(0, 8))
-        self.avg_power_bar = self._metric(master, "Avg Leistung 5 s", self.avg_power)
-        self.avg_power_bar.pack(fill="x", padx=16, pady=(0, 16))
+        metrics = tk.Frame(master, bg=self.theme.panel)
+        metrics.pack(fill="x", padx=16, pady=(0, 12))
+        self.avg_power_bar = self._metric(metrics, "Leistung [5 Sekunden Schnitt]", self.avg_power)
+        self.avg_power_bar.pack(fill="x")
+
+        tk.Label(master, text="PERIPHERIE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=16, pady=(2, 8))
+        toggle_row = tk.Frame(master, bg=self.theme.panel)
+        toggle_row.pack(fill="x", padx=16, pady=(0, 14))
+        toggle_row.grid_columnconfigure(0, weight=1)
+        toggle_row.grid_columnconfigure(1, weight=1)
+        self.fan_toggle = TouchToggle(toggle_row, self.theme, "LUEFTER", "Status", 0, command=self._set_fan_enabled)
+        self.fan_toggle.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self.valve_toggle = TouchToggle(toggle_row, self.theme, "VENTIL", "Status", 0, command=self._set_valve_enabled)
+        self.valve_toggle.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+
+        tk.Label(master, text="SYSTEM", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=16, pady=(0, 8))
+        self.sensor_status = StatusIndicator(master, self.theme, "Sensor")
+        self.sensor_status.pack(fill="x", padx=16, pady=(0, 8))
+        self.pid_status = StatusIndicator(master, self.theme, "PID")
+        self.pid_status.pack(fill="x", padx=16, pady=(0, 8))
+        self.heat_status = StatusIndicator(master, self.theme, "Aufheizen")
+        self.heat_status.pack(fill="x", padx=16, pady=(0, 12))
 
         controls = tk.Frame(master, bg=self.theme.bg, highlightthickness=1, highlightbackground=self.theme.border)
         controls.pack(fill="x", padx=16, pady=(0, 12))
-        tk.Label(controls, text="HEIZBETRIEB", bg=self.theme.bg, fg=self.theme.muted, font=("Consolas", 13)).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(controls, text="HEIZBETRIEB", bg=self.theme.bg, fg=self.theme.muted, font=("Consolas", scaled_size(13))).pack(anchor="w", padx=12, pady=(12, 8))
         row = tk.Frame(controls, bg=self.theme.bg)
         row.pack(fill="x", padx=12, pady=(0, 14))
-        self.btn(row, "START", self.start_heating, self.theme.green, 10).pack(side="left", padx=(0, 8))
-        self.btn(row, "STOPP", self.stop_heating, self.theme.amber, 10).pack(side="left")
+        self.btn(row, "START", self.start_heating, self.theme.green, 12).pack(side="left", padx=(0, 8))
+        self.btn(row, "STOPP", self.stop_heating, self.theme.amber, 12).pack(side="left", padx=(0, 8))
+        self.btn(row, "NOTSTOPP", self.emergency_stop, self.theme.red, 12).pack(side="left")
 
         footer = tk.Frame(master, bg=self.theme.panel)
-        footer.pack(side="bottom", fill="x", padx=16, pady=16)
-        tk.Label(footer, text="AKTIVES PROFIL", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 12)).pack(side="left")
-        tk.Label(footer, textvariable=self.profile_label, bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", 14, "bold")).pack(side="right")
+        footer.pack(fill="x", padx=16, pady=(0, 16))
+        tk.Label(footer, text="AKTIVES PROFIL", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(12))).pack(side="left")
+        tk.Label(footer, textvariable=self.profile_label, bg=self.theme.panel, fg=self.theme.orange, font=("Consolas", scaled_size(14), "bold")).pack(side="right")
+
+    def _build_connection_controls(self, master: tk.Misc, *, compact: bool) -> None:
+        bg = self.theme.panel_alt if compact else self.theme.bg
+        container = tk.Frame(master, bg=bg, highlightthickness=1, highlightbackground=self.theme.border)
+        container.pack(side="right" if compact else "top", fill="x" if not compact else "none", padx=(24, 0) if compact else 0, pady=0)
+        tk.Label(container, text="LIVE-VERBINDUNG", bg=bg, fg=self.theme.muted, font=("Consolas", scaled_size(10))).pack(anchor="w", padx=12, pady=(8, 2))
+        tk.Label(container, textvariable=self.connection_state, bg=bg, fg=self.theme.text, font=("Consolas", scaled_size(9))).pack(anchor="w", padx=12, pady=(0, 6))
+        row = tk.Frame(container, bg=bg)
+        row.pack(fill="x", padx=12, pady=(0, 8))
+        self.connection_port_box = ttk.Combobox(row, textvariable=self.connection_port_var, values=list_serial_ports(), state="readonly", width=10 if compact else 12)
+        self.connection_port_box.pack(side="left")
+        tk.Button(row, text="PORTS", command=self._reload_serial_ports, bg=self.theme.panel, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", scaled_size(9), "bold"), padx=8, pady=5).pack(side="left", padx=(8, 6))
+        tk.Button(row, text="VERBINDEN", command=self._connect_selected_port, bg=self.theme.panel, fg=self.theme.green, activebackground=self.theme.green, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", scaled_size(9), "bold"), padx=8, pady=5).pack(side="left")
 
     def _build_dashboard_center(self, master: tk.Misc) -> None:
-        tk.Label(master, text="TEMPERATURVERLAUF", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(master, text="TEMPERATURVERLAUF", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=12, pady=(12, 8))
 
         content = tk.Frame(master, bg=self.theme.panel)
         content.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        content.grid_rowconfigure(0, weight=2)
+        content.grid_rowconfigure(0, weight=11)
         content.grid_rowconfigure(1, weight=1)
         content.grid_columnconfigure(0, weight=1)
 
@@ -449,26 +618,9 @@ class App:
 
         profile_area = tk.Frame(content, bg=self.theme.panel, highlightthickness=1, highlightbackground=self.theme.border)
         profile_area.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
-        tk.Label(profile_area, text="MATERIALPROFILE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 13)).pack(anchor="w", padx=12, pady=(12, 8))
-        tk.Label(profile_area, text="Per Touch auswaehlen. Profilwechsel wird vor dem Anwenden bestaetigt.", bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 11)).pack(anchor="w", padx=12, pady=(0, 10))
+        tk.Label(profile_area, text="MATERIALPROFILE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(12))).pack(anchor="w", padx=12, pady=(6, 2))
         self.profile_row = tk.Frame(profile_area, bg=self.theme.panel)
-        self.profile_row.pack(fill="both", expand=True, padx=6, pady=(0, 6))
-
-    def _build_dashboard_right(self, master: tk.Misc) -> None:
-        tk.Label(master, text="PERIPHERIE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
-        self.fan_toggle = TouchToggle(master, self.theme, "LUEFTER / ABSAUGUNG", "Status", 0, command=self.service.set_fan_enabled)
-        self.fan_toggle.pack(fill="x", padx=16, pady=(0, 12))
-        self.valve_toggle = TouchToggle(master, self.theme, "PNEUMATIKVENTIL", "Status", 0, command=self.service.set_valve_enabled)
-        self.valve_toggle.pack(fill="x", padx=16, pady=(0, 18))
-
-        tk.Label(master, text="SYSTEM", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(8, 8))
-        self.sensor_status = StatusIndicator(master, self.theme, "Sensor")
-        self.sensor_status.pack(fill="x", padx=16, pady=(0, 8))
-        self.pid_status = StatusIndicator(master, self.theme, "PID")
-        self.pid_status.pack(fill="x", padx=16, pady=(0, 8))
-        self.heat_status = StatusIndicator(master, self.theme, "Aufheizen")
-        self.heat_status.pack(fill="x", padx=16, pady=(0, 20))
-        self.btn(master, "NOTSTOPP", self.emergency_stop, self.theme.red, 18).pack(side="bottom", fill="x", padx=16, pady=16)
+        self.profile_row.pack(fill="both", expand=True, padx=6, pady=(0, 4))
 
     def _build_pid_page(self, master: tk.Misc) -> tk.Frame:
         page = tk.Frame(master, bg=self.theme.bg)
@@ -480,8 +632,8 @@ class App:
         right = self.card(page)
         right.grid(row=0, column=1, sticky="nsew")
 
-        tk.Label(left, text="PID-LABOR", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
-        tk.Label(left, text="PID-Werte aendern und parallel die Vorschau-Simulation beobachten.", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 11), wraplength=320, justify="left").pack(anchor="w", padx=12, pady=(0, 12))
+        tk.Label(left, text="PID-LABOR", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(left, text="PID-Werte aendern und parallel die Vorschau-Simulation beobachten.", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(11)), wraplength=420, justify="left").pack(anchor="w", padx=12, pady=(0, 12))
         self._slider(left, "Kp", self.pid_kp, 0.0, 20.0, 0.1, self._preview_changed).pack(fill="x", padx=12, pady=8)
         self._slider(left, "Ki", self.pid_ki, 0.0, 5.0, 0.05, self._preview_changed).pack(fill="x", padx=12, pady=8)
         self._slider(left, "Kd", self.pid_kd, 0.0, 5.0, 0.05, self._preview_changed).pack(fill="x", padx=12, pady=8)
@@ -491,9 +643,9 @@ class App:
         row.pack(fill="x", padx=12, pady=(18, 8))
         self.btn(row, "VORSCHAU RESET", self._reset_preview, self.theme.amber).pack(side="left", padx=(0, 8))
         self.btn(row, "AUF LIVE UEBERNEHMEN", self._apply_preview_to_live, self.theme.orange, 18).pack(side="left")
-        tk.Label(left, text="Im Plot sind Sollwert, Istwert und Stellwert gleichzeitig sichtbar.", bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 11)).pack(anchor="w", padx=12, pady=(8, 0))
+        tk.Label(left, text="Die Vorschau zeigt den gesamten Temperaturverlauf mit Soll- und Istwert.", bg=self.theme.panel, fg=self.theme.text, font=("Consolas", scaled_size(11)), wraplength=420, justify="left").pack(anchor="w", padx=12, pady=(8, 0))
 
-        tk.Label(right, text="SIMULATIONSVORSCHAU", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(right, text="SIMULATIONSVORSCHAU", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=12, pady=(12, 8))
         self.preview_canvas = tk.Canvas(right, bg=self.theme.panel, highlightthickness=0)
         self.preview_canvas.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         return page
@@ -508,11 +660,11 @@ class App:
         right = self.card(page)
         right.grid(row=0, column=1, sticky="nsew")
 
-        tk.Label(left, text="GESPEICHERTE PROFILE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(left, text="GESPEICHERTE PROFILE", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=12, pady=(12, 8))
         self.profile_list = tk.Frame(left, bg=self.theme.panel)
         self.profile_list.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
-        tk.Label(right, text="PROFIL BEARBEITEN", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 14)).pack(anchor="w", padx=12, pady=(12, 8))
+        tk.Label(right, text="PROFIL BEARBEITEN", bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(14))).pack(anchor="w", padx=12, pady=(12, 8))
         self._entry(right, "Name", self.form_name).pack(fill="x", padx=12, pady=8)
         self._slider(right, "Sollwert", self.form_sp, 40.0, 300.0, 1.0).pack(fill="x", padx=12, pady=8)
         self._slider(right, "Kp", self.form_kp, 0.0, 20.0, 0.1).pack(fill="x", padx=12, pady=8)
@@ -529,14 +681,14 @@ class App:
         return tk.Frame(master, bg=self.theme.panel, highlightthickness=1, highlightbackground=self.theme.border)
 
     def btn(self, master: tk.Misc, text: str, command, fg: str, width: int = 14) -> tk.Button:
-        return tk.Button(master, text=text, command=command, bg=self.theme.panel_alt, fg=fg, activebackground=fg, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", 12, "bold"), width=width, padx=8, pady=10)
+        return tk.Button(master, text=text, command=command, bg=self.theme.panel_alt, fg=fg, activebackground=fg, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", scaled_size(12), "bold"), width=width, padx=8, pady=10)
 
     def _metric(self, master: tk.Misc, label: str, variable: tk.StringVar) -> tk.Frame:
         frame = tk.Frame(master, bg=self.theme.panel)
         top = tk.Frame(frame, bg=self.theme.panel)
         top.pack(fill="x")
-        tk.Label(top, text=label, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", 13)).pack(side="left")
-        tk.Label(top, textvariable=variable, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", 13)).pack(side="right")
+        tk.Label(top, text=label, bg=self.theme.panel, fg=self.theme.muted, font=("Consolas", scaled_size(13))).pack(side="left")
+        tk.Label(top, textvariable=variable, bg=self.theme.panel, fg=self.theme.text, font=("Consolas", scaled_size(13))).pack(side="right")
         canvas = tk.Canvas(frame, height=18, bg=self.theme.panel, highlightthickness=0)
         canvas.pack(fill="x", pady=(6, 0))
         canvas.create_rectangle(0, 6, 260, 14, fill=self.theme.grid, outline="")
@@ -548,8 +700,8 @@ class App:
         card = tk.Frame(master, bg=self.theme.panel_alt, highlightthickness=1, highlightbackground=self.theme.border)
         top = tk.Frame(card, bg=self.theme.panel_alt)
         top.pack(fill="x", padx=12, pady=(10, 0))
-        tk.Label(top, text=label, bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", 12)).pack(side="left")
-        value_label = tk.Label(top, bg=self.theme.panel_alt, fg=self.theme.orange, font=("Consolas", 12, "bold"))
+        tk.Label(top, text=label, bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", scaled_size(12))).pack(side="left")
+        value_label = tk.Label(top, bg=self.theme.panel_alt, fg=self.theme.orange, font=("Consolas", scaled_size(12), "bold"))
         value_label.pack(side="right")
 
         def refresh(*_args) -> None:
@@ -564,8 +716,8 @@ class App:
 
     def _entry(self, master: tk.Misc, label: str, variable: tk.StringVar) -> tk.Frame:
         card = tk.Frame(master, bg=self.theme.panel_alt, highlightthickness=1, highlightbackground=self.theme.border)
-        tk.Label(card, text=label, bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", 12)).pack(anchor="w", padx=12, pady=(10, 6))
-        tk.Entry(card, textvariable=variable, bg=self.theme.bg, fg=self.theme.text, insertbackground=self.theme.text, relief="flat", font=("Consolas", 13)).pack(fill="x", padx=12, pady=(0, 12))
+        tk.Label(card, text=label, bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", scaled_size(12))).pack(anchor="w", padx=12, pady=(10, 6))
+        tk.Entry(card, textvariable=variable, bg=self.theme.bg, fg=self.theme.text, insertbackground=self.theme.text, relief="flat", font=("Consolas", scaled_size(13))).pack(fill="x", padx=12, pady=(0, 12))
         return card
 
     def show_page(self, key: str) -> None:
@@ -579,6 +731,85 @@ class App:
         self.service.set_mode(OperatingMode.AUTO)
         self.service.set_heating_enabled(True)
         self.status.set("Heizbetrieb aktiv")
+
+    def _set_fan_enabled(self, enabled: bool) -> None:
+        self.service.set_fan_enabled(enabled)
+
+    def _set_valve_enabled(self, enabled: bool) -> None:
+        self.service.set_valve_enabled(enabled)
+
+    def _reload_serial_ports(self) -> None:
+        ports = list_serial_ports()
+        self.connection_port_box["values"] = ports
+        if ports:
+            if self.connection_port_var.get() not in ports:
+                self.connection_port_var.set(ports[0])
+        else:
+            self.connection_port_var.set("")
+            messagebox.showwarning("Keine Ports", "Es wurden aktuell keine seriellen Ports gefunden.", parent=self.root)
+
+    def _replace_service(self, new_service: ControllerService, *, status_text: str, connection_text: str) -> None:
+        old_service = self.service
+        old_service.stop()
+        self.service = new_service
+        self.service_window.service = self.service
+        self._last_status_timestamp = -1.0
+        self.service.start()
+        self.connection_state.set(connection_text)
+        self.status.set(status_text)
+        self._refresh_connection_ui()
+
+    def _connect_selected_port(self) -> None:
+        port = self.connection_port_var.get().strip()
+        if not port:
+            port = auto_serial_port() or ""
+            self.connection_port_var.set(port)
+        if not port:
+            messagebox.showerror("Kein COM-Port", "Bitte waehle einen gueltigen COM-Port aus.", parent=self.root)
+            return
+
+        try:
+            new_service = build_service(RuntimeMode.SERIAL, port)
+        except Exception as exc:
+            fallback_service = build_service(RuntimeMode.SIMULATION)
+            self.serial_port = port
+            self._replace_service(
+                fallback_service,
+                status_text="Simulation aktiv - Live-Verbindung fehlgeschlagen",
+                connection_text=f"COM-Port {port} nicht erreichbar - Simulation aktiv",
+            )
+            messagebox.showwarning(
+                "Verbindung fehlgeschlagen",
+                f"COM-Port nicht erreichbar.\n\n{exc}\n\nGUI wurde im Simulationsmodus geoeffnet.",
+                parent=self.root,
+            )
+            return
+
+        self.serial_port = port
+        self._replace_service(
+            new_service,
+            status_text=f"Live-Verbindung aktiv auf {port}",
+            connection_text=f"Live verbunden: {port}",
+        )
+
+    def _refresh_connection_ui(self) -> None:
+        ports = list_serial_ports()
+        if hasattr(self, "connection_port_box"):
+            self.connection_port_box["values"] = ports
+        current_port = self.connection_port_var.get().strip()
+        if self.serial_port and not current_port:
+            self.connection_port_var.set(self.serial_port)
+        elif ports and not current_port:
+            self.connection_port_var.set(ports[0])
+        if self.service.mode == RuntimeMode.SERIAL:
+            port = self.connection_port_var.get() or self.serial_port or auto_serial_port() or "-"
+            self.connection_state.set(f"Live verbunden: {port}")
+        else:
+            port = self.connection_port_var.get() or self.serial_port
+            if port:
+                self.connection_state.set(f"Simulation aktiv - letzter Port: {port}")
+            else:
+                self.connection_state.set("Simulation aktiv")
 
     def stop_heating(self) -> None:
         self.service.set_heating_enabled(False)
@@ -629,6 +860,7 @@ class App:
         avg_power = self._average_power_watts()
         self.actual.set(f"{actual_temp:.0f}")
         self.setpoint.set(f"{status.setpoint_c:.0f}")
+        self.temperature_pair.set(f"{actual_temp:.0f} C / {status.setpoint_c:.0f} C")
         self.output.set(f"{status.heater_output_percent:.0f} %")
         self.progress.set(f"{progress:.0f} %")
         self.avg_power.set(f"{avg_power:.0f} W")
@@ -645,8 +877,7 @@ class App:
 
         self.fan_toggle.set_state(status.fan_enabled, 100 if status.fan_enabled else 0)
         self.valve_toggle.set_state(status.valve_enabled, 100 if status.valve_enabled else 0)
-        self._fill_bar(self.output_bar, status.heater_output_percent, self.theme.orange)
-        self._fill_bar(self.progress_bar, progress, self.theme.amber)
+        self.power_gauge.set_percent(status.heater_output_percent)
         self._fill_bar(self.avg_power_bar, (avg_power / self.DISPLAY_MAX_POWER_WATTS) * 100.0, self.theme.green)
 
     def _fill_bar(self, frame: tk.Frame, percent: float, color: str) -> None:
@@ -666,74 +897,92 @@ class App:
         canvas.delete("all")
         width = max(canvas.winfo_width(), 300)
         height = max(canvas.winfo_height(), 220)
-        left, top, right, bottom = 54, 58, width - 18, height - 34
+        left, top, right, bottom = 72, 94, width - 18, height - 46
 
         window_start, window_end = self._visible_time_window(chart, current_time)
-        self._draw_legend(canvas, left, 20, process_color)
-        canvas.create_text(18, (top + bottom) / 2, text="Temp. [C]", fill=self.theme.muted, font=("Consolas", 11), angle=90)
-        canvas.create_text((left + right) / 2, height - 12, text=f"Zeit [s]  Fenster {window_start:.0f} - {window_end:.0f}", fill=self.theme.muted, font=("Consolas", 11))
+        self._draw_legend(canvas, left, 24, process_color)
+        canvas.create_text(24, (top + bottom) / 2, text="Temp. [C]", fill=self.theme.muted, font=("Consolas", scaled_size(11)), angle=90)
+        canvas.create_text((left + right) / 2, bottom + 26, text="Zeit [s]", fill=self.theme.muted, font=("Consolas", scaled_size(11)))
 
-        for index in range(5):
-            y = top + ((bottom - top) / 4) * index
+        for temp in range(0, 301, 50):
+            y = bottom - ((temp / 300.0) * (bottom - top))
             canvas.create_line(left, y, right, y, fill=self.theme.grid)
 
         if len(chart.values) < 2:
-            self._draw_axis_ticks(canvas, left, right, top, bottom, window_start, max(chart.sample_time, window_end - window_start), 0.0, 100.0)
+            self._draw_axis_ticks(canvas, left, right, top, bottom, window_start, max(chart.sample_time, window_end - window_start))
             canvas.create_rectangle(left, top, right, bottom, outline=self.theme.border)
             return
 
-        vmin = min(min(chart.values), min(chart.setpoints)) - 10
-        vmax = max(max(chart.values), max(chart.setpoints)) + 10
-        vspan = max(20.0, vmax - vmin)
+        vmin = 0.0
+        vmax = 300.0
+        vspan = vmax - vmin
         tspan = max(chart.sample_time, window_end - window_start)
 
-        self._draw_axis_ticks(canvas, left, right, top, bottom, window_start, tspan, vmin, vspan)
+        self._draw_axis_ticks(canvas, left, right, top, bottom, window_start, tspan)
 
-        fill_points = [left, bottom]
         value_points: list[float] = []
         setpoint_points: list[float] = []
         output_points: list[float] = []
+        output_fill_points: list[float] = []
+        y_zero = bottom
 
         for timestamp, value, setpoint, output in zip(chart.times, chart.values, chart.setpoints, chart.outputs):
             x = left + ((timestamp - window_start) / tspan) * (right - left)
             y_value = bottom - ((value - vmin) / vspan) * (bottom - top)
-            y_setpoint = bottom - ((setpoint - vmin) / vspan) * (bottom - top)
-            y_output = bottom - (max(0.0, min(100.0, output)) / 100.0) * ((bottom - top) * 0.32)
-            fill_points.extend([x, y_value])
+            clamped_setpoint = max(vmin, min(vmax, setpoint))
+            y_setpoint = bottom - ((clamped_setpoint - vmin) / vspan) * (bottom - top)
+            y_output = y_zero - (max(0.0, min(100.0, output)) / 100.0) * (y_zero - y_setpoint)
             value_points.extend([x, y_value])
             setpoint_points.extend([x, y_setpoint])
             output_points.extend([x, y_output])
+            output_fill_points.extend([x, y_output])
 
-        fill_points.extend([right, bottom])
-        canvas.create_polygon(*fill_points, fill=fill_color, outline="", smooth=True)
+        if output_fill_points:
+            output_fill_points = [output_points[0], y_zero] + output_fill_points + [output_points[-2], y_zero]
+            canvas.create_polygon(*output_fill_points, fill=self.theme.green, outline="", stipple="gray25")
+        canvas.create_line(left, y_zero, right, y_zero, fill=self.theme.grid, dash=(2, 6))
         canvas.create_line(*setpoint_points, fill=self.theme.amber, width=2, dash=(6, 5), smooth=True)
+        canvas.create_line(*output_points, fill=self.theme.green, width=3)
         canvas.create_line(*value_points, fill=process_color, width=4, smooth=True)
-        canvas.create_line(*output_points, fill=self.theme.green, width=3, smooth=True)
         canvas.create_oval(value_points[-2] - 5, value_points[-1] - 5, value_points[-2] + 5, value_points[-1] + 5, fill=process_color, outline="")
         canvas.create_oval(output_points[-2] - 4, output_points[-1] - 4, output_points[-2] + 4, output_points[-1] + 4, fill=self.theme.green, outline="")
         canvas.create_rectangle(left, top, right, bottom, outline=self.theme.border)
 
     def _visible_time_window(self, chart: ChartState, current_time: float) -> tuple[float, float]:
-        visible_span = chart.sample_time * max(2, chart.max_points)
-        window_end = chart.times[-1] if chart.times else current_time
-        window_start = max(0.0, window_end - visible_span)
+        if not chart.times:
+            return 0.0, max(chart.sample_time, current_time)
+        window_start = chart.times[0]
+        window_end = chart.times[-1]
+        if window_end <= window_start:
+            window_end = window_start + chart.sample_time
         return window_start, window_end
 
-    def _draw_axis_ticks(self, canvas: tk.Canvas, left: int, right: int, top: int, bottom: int, t0: float, tspan: float, vmin: float, vspan: float) -> None:
+    def _draw_axis_ticks(self, canvas: tk.Canvas, left: int, right: int, top: int, bottom: int, t0: float, tspan: float) -> None:
+        for temp in range(0, 301, 50):
+            ratio = temp / 300.0
+            y = bottom - ratio * (bottom - top)
+            canvas.create_line(left - 6, y, left, y, fill=self.theme.muted)
+            canvas.create_text(left - 10, y, text=f"{temp}", fill=self.theme.muted, font=("Consolas", scaled_size(10)), anchor="e")
+
         for index in range(5):
             ratio = index / 4
-            y = bottom - ratio * (bottom - top)
             x = left + ratio * (right - left)
-            canvas.create_text(left - 8, y, text=f"{vmin + ratio * vspan:.0f}", fill=self.theme.muted, font=("Consolas", 10), anchor="e")
-            canvas.create_text(x, bottom + 14, text=f"{t0 + ratio * tspan:.0f}", fill=self.theme.muted, font=("Consolas", 10), anchor="n")
+            canvas.create_text(x, bottom + 10, text=f"{t0 + ratio * tspan:.0f}", fill=self.theme.muted, font=("Consolas", scaled_size(10)), anchor="n")
 
     def _draw_legend(self, canvas: tk.Canvas, x: int, y: int, process_color: str) -> None:
-        entries = [("Isttemperatur", process_color, None), ("Sollwert", self.theme.amber, (6, 5)), ("Stellwert", self.theme.green, None)]
-        cursor = x
-        for label, color, dash in entries:
-            canvas.create_line(cursor, y, cursor + 22, y, fill=color, width=3, dash=dash)
-            canvas.create_text(cursor + 30, y, text=label, fill=self.theme.text, font=("Consolas", 11), anchor="w")
-            cursor += 118 if label == "Sollwert" else 136
+        width = max(canvas.winfo_width(), 300)
+        left = x
+        right = width - 24
+        segment_width = (right - left) / 3
+        entries = [
+            ("Isttemperatur", process_color, None),
+            ("Sollwert", self.theme.amber, (6, 5)),
+            ("Heizleistung", self.theme.green, None),
+        ]
+        for index, (label, color, dash) in enumerate(entries):
+            item_x = left + segment_width * index + 8
+            canvas.create_line(item_x, y, item_x + 28, y, fill=color, width=4, dash=dash)
+            canvas.create_text(item_x + 40, y, text=label, fill=self.theme.text, font=("Consolas", scaled_size(11)), anchor="w")
 
     def _output_to_watts(self, output_percent: float) -> float:
         return max(0.0, min(100.0, output_percent)) / 100.0 * self.DISPLAY_MAX_POWER_WATTS
@@ -800,10 +1049,10 @@ class App:
                 activeforeground=self.theme.bg,
                 relief="flat",
                 bd=0,
-                font=("Consolas", 13, "bold"),
-                padx=18,
-                pady=18,
-                wraplength=160,
+                font=("Consolas", scaled_size(13), "bold"),
+                padx=10,
+                pady=10,
+                wraplength=180,
                 justify="center",
             )
             button.grid(row=index // self.PROFILE_COLUMNS, column=index % self.PROFILE_COLUMNS, sticky="nsew", padx=6, pady=6)
@@ -821,9 +1070,9 @@ class App:
         for profile in self.profiles:
             row = tk.Frame(self.profile_list, bg=self.theme.panel_alt, highlightthickness=1, highlightbackground=self.theme.border)
             row.pack(fill="x", pady=(0, 8))
-            tk.Label(row, text=profile.name, bg=self.theme.panel_alt, fg=self.theme.orange, font=("Consolas", 13, "bold")).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 2))
-            tk.Label(row, text=f"Soll {profile.setpoint:.0f}C   Kp {profile.kp:.2f}   Ki {profile.ki:.2f}   Kd {profile.kd:.2f}", bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", 11)).grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
-            tk.Button(row, text="LADEN", command=lambda current=profile: self._load_profile(current), bg=self.theme.panel, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", 11, "bold"), padx=12, pady=8).grid(row=0, column=1, rowspan=2, padx=12)
+            tk.Label(row, text=profile.name, bg=self.theme.panel_alt, fg=self.theme.orange, font=("Consolas", scaled_size(13), "bold")).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 2))
+            tk.Label(row, text=f"Soll {profile.setpoint:.0f}C   Kp {profile.kp:.2f}   Ki {profile.ki:.2f}   Kd {profile.kd:.2f}", bg=self.theme.panel_alt, fg=self.theme.text, font=("Consolas", scaled_size(11))).grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+            tk.Button(row, text="LADEN", command=lambda current=profile: self._load_profile(current), bg=self.theme.panel, fg=self.theme.text, activebackground=self.theme.orange, activeforeground=self.theme.bg, relief="flat", bd=0, font=("Consolas", scaled_size(11), "bold"), padx=12, pady=8).grid(row=0, column=1, rowspan=2, padx=12)
             row.grid_columnconfigure(0, weight=1)
 
     def _mark_profile(self, name: str) -> None:

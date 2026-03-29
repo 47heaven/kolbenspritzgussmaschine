@@ -168,10 +168,12 @@ class HeaterOutputConfig(DigitalOutputConfig):
         initial_enabled=False,
         control_period_s=0.5,
         time_window_s=2.0,
+        ramp_up_seconds=10.0,
     ):
         DigitalOutputConfig.__init__(self, pin, active_high=active_high, initial_enabled=initial_enabled)
         self.control_period_s = control_period_s
         self.time_window_s = time_window_s
+        self.ramp_up_seconds = ramp_up_seconds
 
 
 class FanControlConfig:
