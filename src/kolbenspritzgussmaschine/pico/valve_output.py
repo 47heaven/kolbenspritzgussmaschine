@@ -11,7 +11,12 @@ class ActiveHighValveOutput:
         if Pin is None:
             raise RuntimeError("ActiveHighValveOutput requires MicroPython on the Pico.")
         self.config = config
-        self._pin = Pin(config.pin, Pin.OUT)
+        safe_off_level = 1 if not config.active_high else 0
+        try:
+            self._pin = Pin(config.pin, Pin.OUT, value=safe_off_level)
+        except TypeError:
+            self._pin = Pin(config.pin, Pin.OUT)
+            self._pin.value(safe_off_level)
         self._enabled = False
         self.disable()
 

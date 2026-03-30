@@ -405,6 +405,7 @@ class App:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.service.start()
+        self._ensure_safe_live_valve_state()
         if self.connection_notice:
             self.status.set("Simulation aktiv - COM-Port nicht erreichbar")
             self.root.after(150, lambda: messagebox.showwarning("Simulationsmodus aktiv", self.connection_notice, parent=self.root))
@@ -755,9 +756,18 @@ class App:
         self.service_window.service = self.service
         self._last_status_timestamp = -1.0
         self.service.start()
+        self._ensure_safe_live_valve_state()
         self.connection_state.set(connection_text)
         self.status.set(status_text)
         self._refresh_connection_ui()
+
+    def _ensure_safe_live_valve_state(self) -> None:
+        if self.service.mode != RuntimeMode.SERIAL:
+            return
+        try:
+            self.service.set_valve_enabled(False)
+        except Exception as exc:
+            self.status.set(f"Live verbunden, Ventil-AUS beim Start fehlgeschlagen: {exc}")
 
     def _connect_selected_port(self) -> None:
         port = self.connection_port_var.get().strip()

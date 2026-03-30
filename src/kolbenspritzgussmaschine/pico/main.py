@@ -18,7 +18,7 @@ def build_pico_config() -> MachineConfig:
     config.heater.pin = 2
     config.fan.pin = 3
     config.valve.pin = 4
-    config.valve.active_high = False
+    config.valve.active_high = True
     config.heater.time_window_s = 2.0
     config.heater.control_period_s = 0.5
     config.control_interval_s = 0.5

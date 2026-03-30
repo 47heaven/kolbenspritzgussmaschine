@@ -18,6 +18,7 @@ python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/valve_outp
 python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/pid_loop.py :kolbenspritzgussmaschine/pico/pid_loop.py
 python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/safety_manager.py :kolbenspritzgussmaschine/pico/safety_manager.py
 python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/runtime.py :kolbenspritzgussmaschine/pico/runtime.py
+python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/boot.py :boot.py
 python -m mpremote connect $Port cp src/kolbenspritzgussmaschine/pico/main.py :main.py
 
 python -m mpremote connect $Port reset
