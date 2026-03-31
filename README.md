@@ -1,139 +1,241 @@
 # Kolbenspritzgussmaschine
 
-Dieses Repository enthaelt den aktuellen Software-Prototyp fuer eine studentisch entwickelte Kolbenspritzgussmaschine.
+Dieses Repository enthaelt den aktuellen Softwarestand fuer eine studentisch entwickelte Kolbenspritzgussmaschine. Der Schwerpunkt liegt auf der Temperaturregelung, der Bedienoberflaeche und der Anbindung echter Hardware ueber einen Raspberry Pi Pico.
 
-Der Schwerpunkt liegt im Moment auf der Temperaturregelung eines beheizten Systems mit einem PID-Regler. Noch arbeitet der Code mit einer Simulation. Die Struktur ist aber bereits so vorbereitet, dass spaeter reale Sensoren und Aktoren angebunden werden koennen.
+Die Dokumentation in dieser `README.md` ist der Einstieg fuer neue Personen im Projekt. Wenn du das System wirklich uebernehmen, erweitern oder in Betrieb nehmen willst, lies danach unbedingt auch die ausfuehrliche Architektur-Doku:
 
-## Ziel des Projekts
+- [Architektur-Ueberblick](docs/architektur-ueberblick.md)
 
-Die Maschine soll Kunststoff erhitzen und kontrolliert verarbeiten. Damit das sicher und reproduzierbar funktioniert, muss die Temperatur zuverlaessig geregelt werden.
+## Worum es in diesem Projekt geht
 
-Dafuer wird ein PID-Regler verwendet:
-- Der Sensor liefert den aktuellen Istwert.
-- Der Regler vergleicht Istwert und Sollwert.
-- Daraus wird ein Stellwert fuer die Heizung berechnet.
-- Die Heizung beeinflusst den Prozess.
+Die Maschine soll Kunststoff kontrolliert erwaermen und spaeter sicher verarbeiten. Damit das funktioniert, muss die Temperatur:
 
-## Aktueller Stand
+- gemessen werden
+- mit einem Sollwert verglichen werden
+- ueber die Heizung geregelt werden
+- unter Sicherheitsgrenzen bleiben
 
-Der aktuelle Code ist ein Lern- und Entwicklungsstand mit folgenden Bausteinen:
-- ein wiederverwendbarer PID-Controller im Paket unter `src/`
-- eine einfache thermische Simulation als Ersatz fuer reale Hardware
-- ein Konsolenskript zur Beobachtung des Regelverhaltens
-- ein Live-Plot zur Visualisierung von Istwert, Sollwert und Stellwert
+Die Software ist so aufgebaut, dass sie in zwei Betriebswelten funktionieren kann:
 
-## Projektstruktur
+- `Simulation`: fuer Entwicklung, Tests und UI-Arbeit ohne echte Hardware
+- `Serial`: fuer den Betrieb mit Raspberry Pi oder PC als Bediengeraet und einem Raspberry Pi Pico als Hardware-Controller
 
-- `src/kolbenspritzgussmaschine/pid_control.py`
-  Zentrale Reglerlogik mit Konfiguration, Telemetrie und Sicherheitsfunktionen.
+## Fuer Nachfolger zuerst wichtig
 
-- `src/kolbenspritzgussmaschine/__init__.py`
-  Oeffentliche Paket-API fuer Importe aus anderen Modulen.
+Wenn du neu in das Projekt einsteigst, ist diese Reihenfolge sinnvoll:
 
-- `scripts/pid_simulation.py`
-  Startet eine einfache Simulation und gibt Reglerwerte in der Konsole aus.
+1. Diese `README.md` lesen
+2. [docs/architektur-ueberblick.md](docs/architektur-ueberblick.md) lesen
+3. [docs/uebergabe-stand-2026-03-26.md](docs/uebergabe-stand-2026-03-26.md) lesen
+4. Danach erst die wichtigsten Dateien im Code oeffnen:
+   - `scripts/pid_touch_ui.py`
+   - `src/kolbenspritzgussmaschine/services/controller_service.py`
+   - `src/kolbenspritzgussmaschine/machine_controller.py`
+   - `src/kolbenspritzgussmaschine/pico/runtime.py`
 
-- `scripts/pid_live_plot.py`
-  Zeigt die simulierten Reglerdaten als Live-Diagramm mit Matplotlib.
+## Aktueller Funktionsumfang
 
-- `scripts/_bootstrap.py`
-  Hilfsdatei, damit die Skripte beim direkten Starten die lokalen Module finden.
+Der aktuelle Stand umfasst bereits mehr als nur eine einfache PID-Demo:
 
-## So funktioniert der Regelkreis
+- Touch-GUI als zentrale Bedienoberflaeche
+- Simulationsmodus fuer Entwicklung ohne reale Maschine
+- Service-Schicht zwischen GUI und Maschine
+- Desktop-/Pi-seitige Regel- und Sicherheitslogik
+- serielle JSON-Kommunikation zwischen Host und Pico
+- Pico-Runtime in MicroPython fuer Sensor, Ausgaenge und lokale Regelung
+- mehrere Hilfsskripte fuer Simulation, Plotting, Upload und serielle Tests
 
-Vereinfacht laeuft ein Zyklus so ab:
+## Schnellstart
 
-1. Der Sensor liefert einen Temperaturwert.
-2. Der PID-Regler berechnet daraus einen neuen Stellwert.
-3. Der Stellwert wird an die Heizung weitergegeben.
-4. Die Temperatur aendert sich.
-5. Der naechste Zyklus beginnt.
+### Voraussetzungen
 
-Im aktuellen Projekt wird dieser Ablauf nicht mit echter Hardware, sondern mit einer simulierten Anlage getestet.
-
-## Installation
-
-Voraussetzungen:
 - Python 3
 - `pip`
+- fuer echten Serial-Betrieb: `pyserial`
+- fuer Plot-Skripte: `matplotlib`
 
-Abhaengigkeiten installieren:
+Installation:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Aktuell wird benoetigt:
-- `simple-pid`
-- fuer den Plot zusaetzlich `matplotlib`
+## Wichtige Startpunkte
 
-Falls `matplotlib` noch fehlt:
+### 1. Hauptoberflaeche starten
 
 ```bash
-pip install matplotlib
+python scripts/pid_touch_ui.py
 ```
 
-## Beispiele ausfuehren
+Die GUI versucht standardmaessig zuerst, sich mit einem Pico ueber Serial zu verbinden. Falls das nicht klappt, startet sie automatisch im Simulationsmodus.
 
-Simulation in der Konsole starten:
+### 2. Reine Simulation in der Konsole
 
 ```bash
 python scripts/pid_simulation.py
 ```
 
-Live-Plot starten:
+### 3. Live-Plot fuer das Regelverhalten
 
 ```bash
 python scripts/pid_live_plot.py
 ```
 
-## Bedeutung der wichtigsten Begriffe
+### 4. Serielle Testkonsole fuer Pico-Kommandos
 
-- Istwert:
-  Der aktuell gemessene Wert, zum Beispiel die aktuelle Temperatur.
+```bash
+python scripts/serial_test_console.py
+```
 
-- Sollwert:
-  Der Zielwert, den der Regler erreichen soll.
+## Projektstruktur auf einen Blick
 
-- Stellwert:
-  Das Ausgangssignal des Reglers, zum Beispiel die Heizleistung in Prozent.
+### `scripts/`
 
-- PID:
-  Eine Reglerart aus drei Anteilen:
-  proportional, integral und differential.
+Hier liegen die direkt startbaren Werkzeuge.
 
-## Wie der Umbau auf reale Hardware spaeter aussieht
+- `pid_touch_ui.py`: wichtigste GUI, fuer Bedienung und Service/Test
+- `pid_simulation.py`: einfacher Simulationseinstieg
+- `pid_live_plot.py`: grafische Darstellung von Temperatur, Sollwert und Heizleistung
+- `serial_test_console.py`: serielle Testkommunikation mit dem Pico
+- `pico_upload_commands.ps1`: Befehle fuer Dateiuebertragung auf den Pico
 
-Die vorhandene Struktur ist absichtlich so aufgebaut, dass der Kern des Reglers erhalten bleiben kann.
+### `src/kolbenspritzgussmaschine/`
 
-Spaeter muessen vor allem diese Teile ersetzt werden:
-- Die Simulationsklasse `FirstOrderPlant` durch echte Hardwareklassen
-- Das Lesen des Prozesswerts durch einen echten Temperatursensor
-- Das Schreiben des Stellwerts an einen echten Heiztreiber oder ein SSR
+Hier liegt die eigentliche Anwendungslogik.
 
-Die zentrale Idee dabei:
-- Eine Sensorklasse implementiert `read()`
-- Eine Aktorklasse implementiert `write()` und `stop()`
-- Beide werden an `InjectionMachinePidController` uebergeben
+- `config.py`: zentrale Konfigurationsobjekte
+- `models.py`: Status- und Fehlerdaten
+- `interfaces.py`: Hardware-Abstraktionen und Adapter
+- `pid_control.py`: wiederverwendbarer PID-Kern
+- `machine_controller.py`: zentrale Logik fuer Moduswechsel, Safety und Regelung
+- `simulated_hardware.py`: einfache thermische Simulationshardware
+- `safety_manager.py`: Plausibilitaets- und Sicherheitspruefungen
+- `services/controller_service.py`: Hintergrund-Service fuer GUI und Gateways
+- `communication/`: Serial-Protokoll und Client
+- `pico/`: MicroPython-Code fuer den Raspberry Pi Pico
 
-Damit kann dieselbe Reglerlogik weiterverwendet werden, egal ob die Daten aus einer Simulation oder von der realen Maschine kommen.
+### `docs/`
 
-## Sicherheit
+Hier liegt die weiterfuehrende Dokumentation.
 
-Bei realer Hardware muss Sicherheit deutlich strenger behandelt werden als in der aktuellen Simulation.
+- `architektur-ueberblick.md`: neue Einsteiger- und Nachfolger-Doku
+- `uebergabe-stand-2026-03-26.md`: Uebergabestatus und offene Punkte
+- `hardware-architektur.md`: Hardwarezuordnung und Protokoll
+- `hardware-test.md`: Testschritte fuer reale Hardware
+- `pico-upload.md`: Upload-Anleitung fuer MicroPython/Pico
+- `pid-regelung.md`: Hintergrund zur PID-Regelung
 
-Wichtige Punkte fuer spaeter:
-- Abschalten bei Sensorfehlern
-- Abschalten bei ueberhoehter Temperatur
-- Abschalten bei haengendem oder zu langsamem Regelkreis
-- definierter sicherer Zustand fuer die Heizung
+## Wie das System grob funktioniert
 
-Im Code gibt es dafuer bereits erste Struktur, zum Beispiel ueber `stop()` und `assert_fresh()`.
+Vereinfacht arbeitet das Projekt in diesem Ablauf:
 
-## Naechste sinnvolle Schritte
+1. Die GUI oder ein Testskript gibt Sollwerte oder Befehle vor.
+2. Ein `ControllerService` spricht mit einem Gateway.
+3. Das Gateway arbeitet entweder:
+   - lokal gegen die Simulation oder
+   - ueber Serial gegen den Pico
+4. Temperaturdaten und Ausgangszustaende werden als `MachineStatus` zurueckgeliefert.
+5. Die GUI zeigt diese Werte an und erlaubt weitere Bedienung.
 
-- Reale Sensor- und Aktorklassen anlegen
-- Messwerte sauber loggen
-- Grenzwerte und Fehlerfaelle explizit behandeln
-- GUI oder Bedienoberflaeche getrennt vom Regler aufbauen
-- PID-Werte mit realen Messdaten abstimmen
+Wichtig: Die Desktop-Seite und die Pico-Seite sind bewusst entkoppelt. Dadurch kann dieselbe Bedienlogik sowohl mit Simulation als auch mit echter Hardware arbeiten.
+
+## Betriebsmodi
+
+Es gibt vier fachliche Maschinenmodi:
+
+- `OFF`: alles sicher aus, keine aktive Regelung
+- `TEST`: manuelle Tests, z. B. kurzer Heiztest
+- `AUTO`: normale automatische Temperaturregelung
+- `FAULT`: Fehlerzustand, Ausgaenge werden in sicheren Zustand gebracht
+
+Zusaetzlich gibt es zwei technische Laufmodi:
+
+- `SIMULATION`
+- `SERIAL`
+
+Diese beiden Begriffe sollte man nicht verwechseln:
+
+- `AUTO/OFF/TEST/FAULT` beschreiben den Maschinenzustand
+- `SIMULATION/SERIAL` beschreiben, woher Messwerte und Aktoren kommen
+
+## Hardwarebild
+
+Das aktuelle Zielbild ist:
+
+- Host-Seite:
+  - PC oder Raspberry Pi
+  - GUI
+  - Logging
+  - Sollwerte
+  - USB-Serial-Verbindung
+- Pico-Seite:
+  - PT100 ueber MAX31865 lesen
+  - Heizung schalten
+  - Luefter schalten
+  - Ventil schalten
+  - Safety lokal absichern
+
+Aktuell dokumentierte Pinbelegung:
+
+- GPIO2 = Heizung
+- GPIO3 = Luefter
+- GPIO4 = Ventil
+- GPIO18 = SPI CLK
+- GPIO16 = SPI MISO
+- GPIO19 = SPI MOSI
+- GPIO17 = SPI CS
+
+## Wichtige Begriffe fuer Einsteiger
+
+- `Istwert`: aktuell gemessene Temperatur
+- `Sollwert`: Zieltemperatur
+- `Stellwert`: Ausgang des Reglers, hier Heizleistung in Prozent
+- `PID`: Regler aus proportionalem, integralem und differentialem Anteil
+- `Gateway`: Schicht, die dieselbe Bedienlogik entweder mit Simulation oder echter Hardware verbindet
+- `MachineStatus`: gemeinsames Statusobjekt fuer GUI, Services und Kommunikation
+
+## Was fuer reale Hardware besonders kritisch ist
+
+Die Software ist vorbereitet, aber reale Inbetriebnahme braucht Vorsicht. Besonders wichtig sind:
+
+- Sensorfehler sauber erkennen
+- Uebertemperatur abfangen
+- Kommunikationsausfall beruecksichtigen
+- Heiztests nur kurz und kontrolliert ausfuehren
+- Grenzwerte mit realer Hardware verifizieren
+- PID-Werte nicht blind aus der Simulation uebernehmen
+
+## Empfehlenswerte Lesereihenfolge im Code
+
+Wenn du das Projekt verstehen willst, hilft diese Reihenfolge:
+
+1. `scripts/pid_touch_ui.py`
+2. `src/kolbenspritzgussmaschine/services/controller_service.py`
+3. `src/kolbenspritzgussmaschine/machine_controller.py`
+4. `src/kolbenspritzgussmaschine/config.py`
+5. `src/kolbenspritzgussmaschine/models.py`
+6. `src/kolbenspritzgussmaschine/interfaces.py`
+7. `src/kolbenspritzgussmaschine/pid_control.py`
+8. `src/kolbenspritzgussmaschine/communication/client.py`
+9. `src/kolbenspritzgussmaschine/pico/runtime.py`
+
+## Offene Themen
+
+Nach aktuellem Stand sind insbesondere diese Punkte noch wichtig:
+
+- reale Sensor-Kalibrierung
+- Validierung von `Rref` und PT100-Anbindung
+- PID-Tuning an der echten Heizzone
+- echte Serial-Inbetriebnahme mit Pico
+- Absicherung und Test des Heizbetriebs
+- spaeter sauberes Logging und Betriebsprotokollierung
+
+## Weiterfuehrende Dokumentation
+
+- [Architektur-Ueberblick](docs/architektur-ueberblick.md)
+- [Uebergabe-Stand](docs/uebergabe-stand-2026-03-26.md)
+- [Hardware-Architektur](docs/hardware-architektur.md)
+- [Hardware-Test](docs/hardware-test.md)
+- [Pico-Upload](docs/pico-upload.md)
+- [PID-Regelung](docs/pid-regelung.md)
